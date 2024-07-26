@@ -6,6 +6,8 @@ class Admin(BaseModel):
     email: str
     pass_word: str
 
+class Item(BaseModel):
+    data: dict
 class User(BaseModel):
     id: Optional[int]
     name: str
@@ -17,6 +19,7 @@ class User(BaseModel):
     pass_Expiry: str
     agent: str
     single: str
+    docs: List[Item]
 
 class Country(BaseModel):
     name: str
@@ -29,12 +32,14 @@ class Application(BaseModel):
 
 class DropdownOptionBase(BaseModel):
     name: str
+    is_checked: bool
 
 class DropdownOptionCreate(DropdownOptionBase):
     pass
 
 class DropdownOptionOut(DropdownOptionBase):
     id: int
+    is_checked: bool
 
     # class Config:
     #     orm_mode = True

@@ -44,66 +44,109 @@ async def get_admin(id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admin Not Found")
     return {'status': 200, 'data': admin, 'message': 'Success'}
 
+#<----Student details---->
 # Create user
-@app.post("/user_create")
-def CU_user(agent: schemas.User, db: Session = Depends(get_db)):
-    if agent.id and agent.id > 0:
-        db_agent = db.query(models.User).filter(models.User.id == agent.id).first()
-        if db_agent:
-            # Update existing agent
-            for key, value in agent.dict(exclude_unset=True).items():
-                setattr(db_agent, key, value)
+# @app.post("/user_create")
+# def CU_user(agent: schemas.User, db: Session = Depends(get_db)):
+#     if agent.id and agent.id > 0:
+#         db_agent = db.query(models.User).filter(models.User.id == agent.id).first()
+#         if db_agent:
+#             # Update existing agent
+#             for key, value in agent.dict(exclude_unset=True).items():
+#                 setattr(db_agent, key, value)
             
-            db.commit()
-            db.refresh(db_agent)
-            return {'status': 200, 'message': 'User Details Upated'}
-        else:
-            raise HTTPException(status_code=404, detail="User not found")
-    else:
-        # Create new agent without an id
-        new_agent = models.agent_data(**agent.dict(exclude={"id"}))
-        db.add(new_agent)
-        db.commit()
-        db.refresh(new_agent)
-        return {'status': 200, 'message': 'New User Created'}
-   
-
-# Update user details
-# @app.put("/user_update/{id}")
-# async def update_user(id: int, request: schemas.User, db: Session = Depends(get_db)):
+#             db.commit()
+#             db.refresh(db_agent)
+#             return {'status': 200, 'message': 'User Details Upated'}
+#         else:
+#             raise HTTPException(status_code=404, detail="User not found")
+#     else:
+#         # Create new agent without an id
+#         new_agent = models.agent_data(**agent.dict(exclude={"id"}))
+#         db.add(new_agent)
+#         db.commit()
+#         db.refresh(new_agent)
+#         return {'status': 200, 'message': 'New User Created'}
+# # Get all users
+# @app.get("/users")
+# async def get_all_users(db: Session = Depends(get_db)):
+#     users = db.query(models.User).all()
+#     return {'status': 200, 'data': users, 'message': 'Success'}
+# # Get user by id
+# @app.get("/user/{id}")
+# async def get_user(id: int, db: Session = Depends(get_db)):
 #     user = db.query(models.User).filter(models.User.id == id).first()
 #     if not user:
 #         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User Not Found")
-#     for attr, value in request.dict(exclude_unset=True).items():
-#         setattr(user, attr, value)
+#     return {'status': 200, 'data': user, 'message': 'Success'}
+# # Delete user
+# @app.delete("/user_delete/{id}")
+# async def delete_user(id: int, db: Session = Depends(get_db)):
+#     user = db.query(models.User).filter(models.User.id == id).first()
+#     if not user:
+#         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User Not Found")
+#     db.delete(user)
 #     db.commit()
-#     db.refresh(user)
-#     return {'status': 200, 'message': 'User Updated'}
-
-# Get all users
-@app.get("/users")
-async def get_all_users(db: Session = Depends(get_db)):
-    users = db.query(models.User).all()
-    return {'status': 200, 'data': users, 'message': 'Success'}
-
-# Get user by id
-@app.get("/user/{id}")
-async def get_user(id: int, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.id == id).first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User Not Found")
-    return {'status': 200, 'data': user, 'message': 'Success'}
-
-# Delete user
-@app.delete("/user_delete/{id}")
-async def delete_user(id: int, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.id == id).first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User Not Found")
-    db.delete(user)
+#     return {'status': 204, 'message': 'User Deleted'}
+#</----Student Details----/>
+@app.post("/users/", response_model=schemas.User)
+def create_or_update_user(user: schemas.User, db: Session = Depends(get_db)):
+    if user.id and user.id > 0:
+        db_user = db.query(models.User).filter(models.User.id == user.id).first()
+        if db_user:
+            # Update existing user
+            db_user.name = user.name
+            db_user.email = user.email
+            db_user.phone = user.phone
+            db_user.address = user.address
+            db_user.gender = user.gender
+            db_user.passport = user.passport
+            db_user.pass_Expiry = user.pass_Expiry
+            db_user.agent = user.agent
+            db_user.single = user.single
+            db_user.docs = [item.dict() for item in user.docs]
+            db.commit()
+            db.refresh(db_user)
+            return db_user
+    
+    # Create new user
+    db_user = models.User(
+        name=user.name,
+        email=user.email,
+        phone=user.phone,
+        address=user.address,
+        gender=user.gender,
+        passport=user.passport,
+        pass_Expiry=user.pass_Expiry,
+        agent=user.agent,
+        single=user.single,
+        docs=[item.dict() for item in user.docs]
+    )
+    db.add(db_user)
     db.commit()
-    return {'status': 204, 'message': 'User Deleted'}
+    db.refresh(db_user)
+    return db_user
 
+@app.get("/users/{user_id}", response_model=schemas.User)
+def read_user(user_id: int, db: Session = Depends(get_db)):
+    db_user = db.query(models.User).filter(models.User.id == user_id).first()
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return db_user
+
+@app.delete("/users/{user_id}")
+def delete_user(user_id: int, db: Session = Depends(get_db)):
+    db_user = db.query(models.User).filter(models.User.id == user_id).first()
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    db.delete(db_user)
+    db.commit()
+    return {"detail": "User deleted"}
+
+@app.get("/users/", response_model=List[schemas.User])
+def read_users(db: Session = Depends(get_db)):
+    db_users = db.query(models.User).all()
+    return db_users
 # Get all applications
 @app.get("/applications")
 async def get_all_applications(db: Session = Depends(get_db)):
@@ -116,18 +159,6 @@ def load_json(filename):
         return json.load(file)
 # Load the JSON data
 data = load_json('address/countries.json')
-class Country(BaseModel):
-    id: int
-    name: str
-
-class State(BaseModel):
-    id: int
-    name: str
-
-class City(BaseModel):
-    id: int
-    name: str
-
 @app.get("/countries")
 def get_countries():
     return {'status': 200, 'data': [{"id": country["id"], "name": country["name"]} for country in data], 'message': 'Success'}
@@ -154,7 +185,7 @@ def get_cities(state_id: int):
 #</----end of Address Details----/>
 
 #<----Docs Dropdown---->
-@app.post("/options/", response_model=schemas.DropdownOptionOut)
+@app.post("/docs/", response_model=schemas.DropdownOptionOut)
 def create_option(option: schemas.DropdownOptionCreate, db: Session = Depends(get_db)):
     db_option = models.DocsDropdown(name=option.name)
     db.add(db_option)
@@ -162,9 +193,9 @@ def create_option(option: schemas.DropdownOptionCreate, db: Session = Depends(ge
     db.refresh(db_option)
     return db_option
 
-@app.get("/options/", response_model=List[schemas.DropdownOptionOut])
-def read_options(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
-    options = db.query(models.DocsDropdown).offset(skip).limit(limit).all()
+@app.get("/docs/", response_model=List[schemas.DropdownOptionOut])
+def read_options(db: Session = Depends(get_db)):
+    options = db.query(models.DocsDropdown).all()
     return options
 #</----Docs Dropdown----/>
 

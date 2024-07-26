@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey,JSON
 from app.database import Base
+
 from sqlalchemy.orm import relationship
 
 class User(Base):
@@ -8,13 +9,14 @@ class User(Base):
     name = Column(String)
     email = Column(String)
     phone = Column(Integer)
-    address = Column(String)
+    address = Column(String)    
     gender = Column(String)
     passport = Column(String)
     pass_Expiry = Column(String)
     agent = Column(String)
     single = Column(String)
-    applications = relationship("Application", back_populates="user")
+    docs = Column(JSON)
+    # applications = relationship("Application", back_populates="user")
 
 class Admin(Base):
     __tablename__ = 'admin'
@@ -30,12 +32,13 @@ class Application(Base):
     university_name = Column(String)
     intake = Column(String)
     program = Column(String)
-    user = relationship("User", back_populates="applications")
+    # user = relationship("User", back_populates="applications")
 
-class DocsDropdown(Base):
-    __tablename__ = "docs_dropdown"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
+# class DocsDropdown(Base):
+#     __tablename__ = "docs_dropdown"
+#     id = Column(Integer, primary_key=True, index=True)
+#     name = Column(String, index=True)
+#     is_checked = Column(Boolean)
 
 
 class agent_data(Base):
