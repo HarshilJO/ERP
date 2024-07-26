@@ -62,42 +62,63 @@ def create_or_update_user(user: schemas.User, db: Session = Depends(get_db)):
         return {'status': 400,  'message': 'Invalid Email'}
     if not PHONE_REGEX.match(phone_str):
         raise HTTPException(status_code=400, detail='Invalid Phone Number')
-
     if user.id and user.id > 0:
-        db_user = db.query(models.User).filter(models.User.id == user.id).first()
-        if db_user:
-            # Update existing user
-            db_user.name = user.name
-            db_user.email = user.email
-            db_user.phone = user.phone
-            db_user.address = user.address
-            db_user.gender = user.gender
-            db_user.passport = user.passport
-            db_user.pass_Expiry = user.pass_Expiry
-            db_user.agent = user.agent
-            db_user.single = user.single
-            db_user.docs = [item.dict() for item in user.docs]
+        db_agent = db.query(models.User).filter(models.User.id == user.id).first()
+        if db_agent:
+            # Update existing agent
+            for key, value in user.dict(exclude_unset=True).items():
+                setattr(db_agent, key, value)
+            
             db.commit()
-            db.refresh(db_user)
-            return db_user
+            db.refresh(db_agent)
+            return {'status': 200, 'message': 'Agent Details Updated'}
+        else:
+            raise HTTPException(status_code=404, detail="Agent not found")
+    else:
+        # Create new agent without an id
+        new_agent = models.User(**user.dict(exclude={"id"}))
+        db.add(new_agent)   
+        db.commit()
+        db.refresh(new_agent)
+        return {'status': 200, 'message': 'New Agent Created'}
+    # if user.id and user.id > 0:
+    #     db_user = db.query(models.User).filter(models.User.id == user.id).first()
+    #     if db_user:
+    #         new_agent = models.User(**agent.dict(exclude={"id"}))
+    #         db.add(new_agent)
+    #         # Update existing user
+    #         db_user.name = user.name
+    #         db_user.email = user.email
+    #         db_user.phone = user.phone
+    #         db_user.address = user.address
+    #         db_user.gender = user.gender
+    #         db_user.passport = user.passport
+    #         db_user.pass_Expiry = user.pass_Expiry
+    #         db_user.agent = user.agent
+    #         db_user.single = user.single
+    #         db_user.docs = [item.dict() for item in user.docs]
+    #         db.commit()
+    #         db.refresh(db_user)
+    #         return {'status': 200, 'data':db_user , 'message': 'Success'}
     
-    # Create new user
-    db_user = models.User(
-        name=user.name,
-        email=user.email,
-        phone=user.phone,
-        address=user.address,
-        gender=user.gender,
-        passport=user.passport,
-        pass_Expiry=user.pass_Expiry,
-        agent=user.agent,
-        single=user.single,
-        docs=[item.dict() for item in user.docs]
-    )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+    # # Create new user
+    # db_user = models.User(
+    #     name=user.name,
+    #     email=user.email,
+    #     phone=user.phone,
+    #     address=user.address,
+    #     gender=user.gender,
+    #     passport=user.passport,
+    #     pass_Expiry=user.pass_Expiry,
+    #     agent=user.agent,
+    #     single=user.single,
+    #     docs=[item.dict() for item in user.docs]
+    # )
+    # db.add(db_user)
+    # db.commit()
+    # db.refresh(db_user)
+    # return {'status': 200, 'data':db_user , 'message': 'Success'}
+    
 
 @app.get("/users/{user_id}", response_model=schemas.User)
 def read_user(user_id: int, db: Session = Depends(get_db)):
@@ -118,7 +139,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
 @app.get("/users/", response_model=List[schemas.User])
 def read_users(db: Session = Depends(get_db)):
     db_users = db.query(models.User).all()
-    return db_users
+    return {'status': 200, 'data':db_users , 'message': 'Success'}
 
 # Get all applications
 @app.get("/applications")
@@ -168,10 +189,11 @@ def create_option(option: schemas.DropdownOptionCreate, db: Session = Depends(ge
     db.refresh(db_option)
     return db_option
 
-@app.get("/docs/", response_model=List[schemas.DropdownOptionOut])
+@app.get("/docs/")
 def read_options(db: Session = Depends(get_db)):
     options = db.query(models.DocsDropdown).all()
-    return options
+    return {'status': 200, 'data':options , 'message': 'Success'}
+    
 
 # Agent Details
 @app.get("/agent")

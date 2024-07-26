@@ -14,12 +14,14 @@ class User(BaseModel):
     email: str
     phone: int
     address: str
+    state:str
+    city:str
     gender: str
     passport: str
     pass_Expiry: str
     agent: str
     single: str
-    docs: List[Item]
+    docs: list
 
 class Country(BaseModel):
     name: str
@@ -31,14 +33,18 @@ class Application(BaseModel):
     intake: str
 
 class DropdownOptionBase(BaseModel):
+    id: int
     name: str
     
 
 class DropdownOptionCreate(DropdownOptionBase):
     pass
 
-class DropdownOptionOut(DropdownOptionBase):
-    id: int
+class DropdownOptionOut(BaseModel):
+    status:int
+    data: List[DropdownOptionBase]
+    message:str
+    
 
     # class Config:
     #     orm_mode = True
