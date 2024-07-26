@@ -19,7 +19,7 @@ class User(BaseModel):
     pass_Expiry: str
     agent: str
     single: str
-    docs: List[Item]
+    docs: List[dict]
 
 class Country(BaseModel):
     name: str
