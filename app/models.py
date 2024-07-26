@@ -34,11 +34,10 @@ class Application(Base):
     program = Column(String)
     # user = relationship("User", back_populates="applications")
 
-# class DocsDropdown(Base):
-#     __tablename__ = "docs_dropdown"
-#     id = Column(Integer, primary_key=True, index=True)
-#     name = Column(String, index=True)
-#     is_checked = Column(Boolean)
+class DocsDropdown(Base):
+    __tablename__ = "docs_dropdown"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
 
 
 class agent_data(Base):
