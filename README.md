@@ -56,7 +56,7 @@ Welcome to the CRM (Customer Relationship Management) project built with FastAPI
   The API is documented using OpenAPI and can be accessed at:
 
   Swagger UI: http://127.0.0.1:8000/docs
-  ReDoc: http://127.0.0.1:8000/redoc
+  or ReDoc: http://127.0.0.1:8000/redoc
 
 ## Contributing
 Contributions are welcome! Please follow these steps to contribute:
