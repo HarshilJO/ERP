@@ -52,13 +52,13 @@ Welcome to the CRM (Customer Relationship Management) project built with FastAPI
    ```bash
    uvicorn main:app --reload
 
-##API Documentation
+## API Documentation
   The API is documented using OpenAPI and can be accessed at:
-  ```bash
+
   Swagger UI: http://127.0.0.1:8000/docs
   ReDoc: http://127.0.0.1:8000/redoc
 
-##Contributing
+## Contributing
 Contributions are welcome! Please follow these steps to contribute:
 
 1.Fork the repository.
@@ -70,11 +70,11 @@ Commit your changes (git commit -am 'Add some feature').
 Push to the branch (git push origin feature/your-feature-name).
 Create a new Pull Request.
 
-##License
+## License
 This project is licensed under the MIT License. See the LICENSE file for details.
 
-##Contact
+## Contact
 For any questions or suggestions, feel free to reach out:
 
-##Email: harshil.y.joshi.2004@gmail.com
-##GitHub: HarshilJO
+## Email: harshil.y.joshi.2004@gmail.com
+## GitHub: HarshilJO
