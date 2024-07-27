@@ -9,7 +9,7 @@ class Admin(BaseModel):
 class Item(BaseModel):
     data: dict
 class User(BaseModel):
-    id: Optional[int]
+    id: Optional[int] = Field(None)
     name: str
     email: str
     phone: int

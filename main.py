@@ -1,11 +1,11 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi import FastAPI, Depends, HTTPException, status, Request, Query
 from app import models, schemas
 from app.database import engine, SessionLocal
 from sqlalchemy.orm import Session
 import re
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import List
+from typing import List,Optional
 import json
 from fastapi.middleware.cors import CORSMiddleware
 import logging
@@ -42,9 +42,9 @@ def get_db():
         db.close()
 
 #<----Validations---->
-NAME_REGEX = re.compile(r"^[a-zA-Z_]{3,30}$")
+NAME_REGEX = re.compile(r"^[a-zA-Z_]+(?: [a-zA-Z_]+)*$")
 EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
-PASSWORD_REGEX = re.compile(r"^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$")
+PASSWORD_REGEX = re.compile(r"^(?=.[A-Za-z])(?=.\d)[A-Za-z\d]{8,}$")
 PHONE_REGEX = re.compile(r"^[6-9][0-9]{9}$")
 #</----Validations----/>
 
@@ -70,8 +70,20 @@ async def get_admin(id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admin Not Found")
     return {'status': 200, 'data': admin, 'message': 'Success'}
 
+#<----Student Detils---->
+@app.get("/users/")
+async def read_users(name: Optional[str] = Query(None),db: Session = Depends(get_db)):
+    if name:
+        user_data = db.query(models.User).filter(models.User.name.ilike(f"%{name}%")).all()
+        
+        if not user_data:
+            raise HTTPException(status_code=404, detail="Agent not found")
+    else:
+        user_data = db.query(models.User).all()
+    return {'status': 200, 'data': user_data, 'message': 'Success'}
+
 # User creation or update endpoint
-@app.post("/users/", response_model=schemas.User)
+@app.post("/users/")
 async def create_or_update_user(user: schemas.User, db: Session = Depends(get_db)):
     phone_str = str(user.phone)
     # Validate phone number as a string
@@ -90,7 +102,7 @@ async def create_or_update_user(user: schemas.User, db: Session = Depends(get_db
             for key, value in user.dict(exclude_unset=True).items():
                 setattr(db_user, key, value)
             db.commit()
-            db.refresh(db_user)
+            db.refresh(db_user) 
             return {'status': 200, 'data': db_user, 'message': 'Success'}
     
     # Create new user
@@ -100,12 +112,8 @@ async def create_or_update_user(user: schemas.User, db: Session = Depends(get_db
     db.refresh(db_user)
     return {'status': 200,  'message': 'Success'}
 
-@app.get("/users/{user_id}", response_model=schemas.User)
-async def read_user(user_id: int, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(models.User.id == user_id).first()
-    if db_user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    return db_user
+
+
 
 @app.delete("/users/{user_id}")
 async def delete_user(user_id: int, db: Session = Depends(get_db)):
@@ -115,12 +123,7 @@ async def delete_user(user_id: int, db: Session = Depends(get_db)):
     db.delete(db_user)
     db.commit()
     return {"detail": "User deleted"}
-
-@app.get("/users/", response_model=List[schemas.User])
-async def read_users(db: Session = Depends(get_db)):
-    db_users = db.query(models.User).all()
-    return {'status': 200, 'data': db_users, 'message': 'Success'}
-
+#</----Student Details----/>
 # Get all applications
 @app.get("/applications")
 async def get_all_applications(db: Session = Depends(get_db)):
@@ -176,10 +179,22 @@ async def read_options(db: Session = Depends(get_db)):
 
 # Agent Details
 @app.get("/agent")
-async def get_all_agent(db: Session = Depends(get_db)):
-    all_agent = db.query(models.agent_data).all()
-    return {'status': 200, 'data': all_agent, 'message': 'Success'}
+async def get_all_agent(name: Optional[str] = Query(None),db: Session = Depends(get_db)):
+
+    if name:
+        agents = db.query(models.agent_data).filter(models.agent_data.name.ilike(f"%{name}%")).all()
+        
+        if not agents:
+            raise HTTPException(status_code=404, detail="Agent not found")
+    else:
+        agents = db.query(models.agent_data).all()
+    return {'status': 200, 'data': agents, 'message': 'Success'}
+
+    # all_agent = db.query(models.agent_data).all()
+    # return {'status': 200, 'data': all_agent, 'message': 'Success'}
+
 @app.get("/agent/{id}", response_model=schemas.AgentSchema)
+
 async def read_user(user_id: int, db: Session = Depends(get_db)):
     db_user = db.query(models.agent_data).filter(models.agent_data.id == id).first()
     if db_user is None:
