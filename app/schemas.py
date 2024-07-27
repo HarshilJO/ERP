@@ -1,10 +1,7 @@
 from typing import List, Optional
 from pydantic import BaseModel,Field
 
-class Admin(BaseModel):
-    token: str
-    email: str
-    pass_word: str
+
 
 class Item(BaseModel):
     data: dict
@@ -27,6 +24,7 @@ class Country(BaseModel):
     name: str
 
 class Application(BaseModel):
+    id: Optional[int] = Field(None)
     student_id: int
     university_name: str
     program: str
@@ -65,8 +63,8 @@ class AgentSchema(BaseModel):
     con_per_pos:str
    
 class Credentials(BaseModel):
-    id:int
-    is_admin:bool
+    id: Optional[int] = Field(None)
+    is_admin:Optional[bool]=Field(None)
     email:str
     password:str
-    token:str
+    token:Optional[str]=Field(None)

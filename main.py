@@ -47,89 +47,6 @@ EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 PASSWORD_REGEX = re.compile(r"^(?=.[A-Za-z])(?=.\d)[A-Za-z\d]{8,}$")
 PHONE_REGEX = re.compile(r"^[6-9][0-9]{9}$")
 #</----Validations----/>
-
-#<----Login---->
-@app.post("/login")
-def login(user: schemas.Credentials,db: Session = Depends(get_db)):
-    db_user = db.query(models.Credentials).filter(models.Credentials.email == user.email).first()
-    if db_user:
-        if db_user.password == user.password:
-            return {'status': 200, 'message': 'User found','data': json.loads(json.dumps(({"Role":db_user.is_admin, "token":db_user.token})))}
-        else:
-            return {'status': 200, 'message': 'Incorrect Password'}
-    else:
-        
-        return {'status': 200, 'message': 'Not found'}
-#</----Login----/>
-
-# Admin authentication
-@app.get("/admin/{id}")
-async def get_admin(id: int, db: Session = Depends(get_db)):
-    admin = db.query(models.Admin).filter(models.Admin.id == id).first()
-    if not admin:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admin Not Found")
-    return {'status': 200, 'data': admin, 'message': 'Success'}
-
-#<----Student Detils---->
-@app.get("/users/")
-async def read_users(name: Optional[str] = Query(None),db: Session = Depends(get_db)):
-    if name:
-        user_data = db.query(models.User).filter(models.User.name.ilike(f"%{name}%")).all()
-        
-        if not user_data:
-            raise HTTPException(status_code=404, detail="Agent not found")
-    else:
-        user_data = db.query(models.User).all()
-    return {'status': 200, 'data': user_data, 'message': 'Success'}
-
-# User creation or update endpoint
-@app.post("/users/")
-async def create_or_update_user(user: schemas.User, db: Session = Depends(get_db)):
-    phone_str = str(user.phone)
-    # Validate phone number as a string
-    a = re.fullmatch(r'[6-9][0-9]{9}', phone_str)
-    if not NAME_REGEX.match(user.name):
-        return {'status': 400,  'message': 'Invalid Name'}
-    if not EMAIL_REGEX.match(user.email):
-        return {'status': 400,  'message': 'Invalid Email'}
-    if not PHONE_REGEX.match(phone_str):
-        raise HTTPException(status_code=400, detail='Invalid Phone Number')
-
-    if user.id and user.id > 0:
-        db_user = db.query(models.User).filter(models.User.id == user.id).first()
-        if db_user:
-            # Update existing user
-            for key, value in user.dict(exclude_unset=True).items():
-                setattr(db_user, key, value)
-            db.commit()
-            db.refresh(db_user) 
-            return {'status': 200, 'data': db_user, 'message': 'Success'}
-    
-    # Create new user
-    db_user = models.User(**user.dict(exclude={"id"}))
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return {'status': 200,  'message': 'Success'}
-
-
-
-
-@app.delete("/users/{user_id}")
-async def delete_user(user_id: int, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(models.User.id == user_id).first()
-    if db_user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    db.delete(db_user)
-    db.commit()
-    return {"detail": "User deleted"}
-#</----Student Details----/>
-# Get all applications
-@app.get("/applications")
-async def get_all_applications(db: Session = Depends(get_db)):
-    applications = db.query(models.Application).all()
-    return applications
-
 # Address details
 def load_json(filename):
     with open(filename, 'r', encoding='utf-8') as file:
@@ -176,7 +93,69 @@ async def create_option(option: schemas.DropdownOptionCreate, db: Session = Depe
 async def read_options(db: Session = Depends(get_db)):
     options = db.query(models.DocsDropdown).all()
     return {'status': 200, 'data': options, 'message': 'Success'}
+#<----Login---->
+@app.post("/login")
+def login(user: schemas.Credentials,db: Session = Depends(get_db)):
+    db_user = db.query(models.Credentials).filter(models.Credentials.email == user.email).first()
+    if db_user:
+        if db_user.password == user.password:
+            return {'status': 200, 'message': 'User found','data': json.loads(json.dumps(({"role":db_user.is_admin, "token":db_user.token})))}
+        else:
+            return {'status': 200, 'message': 'Incorrect Password'}
+    else:
+        
+        return {'status': 200,'data':'User Not found    ','message': 'User Not found'}
+#</----Login----/>
 
+#<----Student Detils---->
+@app.get("/users/")
+async def read_users(name: Optional[str] = Query(None),db: Session = Depends(get_db)):
+    if name:
+        user_data = db.query(models.User).filter(models.User.name.ilike(f"%{name}%")).all()
+        
+        if not user_data:
+            return {'status': 200, 'data': [], 'message': 'Success'}
+    else:
+        user_data = db.query(models.User).all()
+    return {'status': 200, 'data': user_data, 'message': 'Success'}
+
+# User creation or update endpoint
+@app.post("/users/")
+async def create_or_update_user(user: schemas.User, db: Session = Depends(get_db)):
+    phone_str = str(user.phone)
+    # Validate phone number as a string
+    a = re.fullmatch(r'[6-9][0-9]{9}', phone_str)
+    if not NAME_REGEX.match(user.name):
+        return {'status': 400,  'message': 'Invalid Name'}
+    if not EMAIL_REGEX.match(user.email):
+        return {'status': 400,  'message': 'Invalid Email'}
+    if not PHONE_REGEX.match(phone_str):
+        raise HTTPException(status_code=400, detail='Invalid Phone Number')
+
+    if user.id and user.id > 0:
+        db_user = db.query(models.User).filter(models.User.id == user.id).first()
+        if db_user:
+            # Update existing user
+            for key, value in user.dict(exclude_unset=True).items():
+                setattr(db_user, key, value)
+            db.commit()
+            db.refresh(db_user) 
+            return {'status': 200, 'data': db_user, 'message': 'Success'}
+    # Create new user
+    db_user = models.User(**user.dict(exclude={"id"}))
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return {'status': 200,  'message': 'Success'}
+@app.delete("/users/{user_id}")
+async def delete_user(user_id: int, db: Session = Depends(get_db)):
+    db_user = db.query(models.User).filter(models.User.id == user_id).first()
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    db.delete(db_user)
+    db.commit()
+    return {"detail": "User deleted"}
+#</----Student Details----/>
 # Agent Details
 @app.get("/agent")
 async def get_all_agent(name: Optional[str] = Query(None),db: Session = Depends(get_db)):
@@ -185,21 +164,11 @@ async def get_all_agent(name: Optional[str] = Query(None),db: Session = Depends(
         agents = db.query(models.agent_data).filter(models.agent_data.name.ilike(f"%{name}%")).all()
         
         if not agents:
-            raise HTTPException(status_code=404, detail="Agent not found")
+            return {'status': 200, 'data': [], 'message': 'Success'}
     else:
         agents = db.query(models.agent_data).all()
     return {'status': 200, 'data': agents, 'message': 'Success'}
 
-    # all_agent = db.query(models.agent_data).all()
-    # return {'status': 200, 'data': all_agent, 'message': 'Success'}
-
-@app.get("/agent/{id}", response_model=schemas.AgentSchema)
-
-async def read_user(user_id: int, db: Session = Depends(get_db)):
-    db_user = db.query(models.agent_data).filter(models.agent_data.id == id).first()
-    if db_user is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
-    return db_user
 @app.post("/agents/")
 async def CU_agent(agent: schemas.AgentSchema, db: Session = Depends(get_db)):
     if agent.id and agent.id > 0:
@@ -228,4 +197,48 @@ async def delete_agent(id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent Not Found")
     db.delete(user)
     db.commit()
-    return {'status': 204, 'message': 'Agent Deleted'}
+    return {'status': 200, 'data': 'Agent Deleted', 'message': 'Agent Deleted'}
+#<----Applications---->
+# Get all applications
+@app.get("/applications")
+async def get_all_applications(name: Optional[str] = Query(None),db: Session = Depends(get_db)):
+
+    if name:
+        agents = db.query(models.Application).filter(models.Application.name.ilike(f"%{name}%")).all()
+        
+        if not agents:
+            raise HTTPException(status_code=404, detail="Application not found")
+    else:
+        agents = db.query(models.Application).all()
+    return {'status': 200, 'data': agents, 'message': 'Success'}
+
+@app.post("/applications")
+async def CU_Applications(application:schemas.Application,db:Session=Depends(get_db)):
+    if application.id and application.id > 0:
+        db_application = db.query(models.Application).filter(models.Application.id == application.id).first()
+        if db_application:
+            # Update existing agent
+            for key, value in application.dict(exclude_unset=True).items():
+                setattr(db_application, key, value)
+            db.commit()
+            db.refresh(db_application)
+            return {'status': 200,'data':db_application ,'message': 'application Details Updated'}
+        else:
+            raise HTTPException(status_code=404, detail="Agent not found")
+    else:
+        # Create new agent without an id
+        new_application = models.Application(**application.dict(exclude={"id"}))
+        db.add(new_application)
+        db.commit()
+        db.refresh(new_application)
+        return {'status': 200,'data':application , 'message': 'New application Created'}
+    return
+@app.delete("/application_delete/{id}")
+async def delete_application(id: int, db: Session = Depends(get_db)):
+    Application = db.query(models.Application).filter(models.Application.id == id).first()
+    if not Application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application Not Found")
+    db.delete(Application)
+    db.commit()
+    return {'status': 204, 'message': 'Application Deleted'}
+#</----Applications/---->

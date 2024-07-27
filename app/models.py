@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey,JSON,Boolean
+from sqlalchemy import Column, Integer, String, ForeignKey,JSON,Boolean,VARCHAR
 from app.database import Base
 
 from sqlalchemy.orm import relationship
@@ -18,7 +18,7 @@ class User(Base):
     agent = Column(String)
     single = Column(String)
     docs = Column(JSON)
-    # applications = relationship("Application", back_populates="user")
+    applications = relationship("Application", back_populates="user")
 
 class Admin(Base):
     __tablename__ = 'admin'
@@ -32,9 +32,9 @@ class Application(Base):
     id = Column(Integer, primary_key=True, index=True)
     student_id = Column(Integer, ForeignKey('users.id'))
     university_name = Column(String)
-    intake = Column(String)
+    intake = Column(VARCHAR)
     program = Column(String)
-    # user = relationship("User", back_populates="applications")
+    user = relationship("User", back_populates="applications")
 
 class DocsDropdown(Base):
     __tablename__ = "docs_dropdown"
