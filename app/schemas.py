@@ -1,5 +1,5 @@
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel,Field
 
 class Admin(BaseModel):
     token: str
@@ -20,7 +20,7 @@ class User(BaseModel):
     passport: str
     pass_Expiry: str
     agent: str
-    single: str
+    single: bool
     docs: list
 
 class Country(BaseModel):
@@ -49,15 +49,15 @@ class DropdownOptionOut(BaseModel):
     # class Config:
     #     orm_mode = True
 class AgentSchema(BaseModel):
-    id: Optional[int]
+    id: Optional[int] = Field(None)
     email:str
     name:str
     company_name:str
-    agency_type:int
-    city:int
+    agency_type:str
+    city:str
     owner_name:str
     owner_contact:int
-    state:int
+    state:str
     tel_phone:int
     address:str
     con_per_name:str
