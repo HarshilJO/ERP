@@ -64,4 +64,9 @@ class AgentSchema(BaseModel):
     con_per_phone:int
     con_per_pos:str
    
-    
+class Credentials(BaseModel):
+    id:int
+    is_admin:bool
+    email:str
+    password:str
+    token:str

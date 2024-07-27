@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey,JSON
+from sqlalchemy import Column, Integer, String, ForeignKey,JSON,Boolean
 from app.database import Base
 
 from sqlalchemy.orm import relationship
@@ -58,3 +58,11 @@ class agent_data(Base):
     con_per_name = Column(String)
     con_per_phone = Column(String)
     con_per_pos =Column(Integer)
+
+class Credentials(Base):
+    __tablename__ = 'credentials'
+    id = Column(Integer, primary_key=True, index=True)
+    is_admin = Column(Boolean)
+    email = Column(String)
+    password = Column(String)
+    token = Column(String)

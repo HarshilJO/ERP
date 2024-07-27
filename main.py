@@ -49,6 +49,17 @@ PHONE_REGEX = re.compile(r"^[6-9][0-9]{9}$")
 #</----Validations----/>
 
 #<----Login---->
+@app.post("/login")
+def login(user: schemas.Credentials,db: Session = Depends(get_db)):
+    db_user = db.query(models.Credentials).filter(models.Credentials.email == user.email).first()
+    if db_user:
+        if db_user.password == user.password:
+            return {'status': 200, 'message': 'User found','data': json.loads(json.dumps(({"Role":db_user.is_admin, "token":db_user.token})))}
+        else:
+            return {'status': 200, 'message': 'Incorrect Password'}
+    else:
+        
+        return {'status': 200, 'message': 'Not found'}
 #</----Login----/>
 
 # Admin authentication
@@ -87,7 +98,7 @@ async def create_or_update_user(user: schemas.User, db: Session = Depends(get_db
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
-    return {'status': 200, 'data': db_user, 'message': 'Success'}
+    return {'status': 200,  'message': 'Success'}
 
 @app.get("/users/{user_id}", response_model=schemas.User)
 async def read_user(user_id: int, db: Session = Depends(get_db)):
