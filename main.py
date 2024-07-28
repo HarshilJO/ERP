@@ -200,7 +200,7 @@ async def delete_agent(id: int, db: Session = Depends(get_db)):
     return {'status': 200, 'data': 'Agent Deleted', 'message': 'Agent Deleted'}
 #<----Applications---->
 # Get all applications
-@app.get("/applications")
+@app.get("/application")
 async def get_all_applications(name: Optional[str] = Query(None),db: Session = Depends(get_db)):
 
     if name:
@@ -212,7 +212,7 @@ async def get_all_applications(name: Optional[str] = Query(None),db: Session = D
         agents = db.query(models.Application).all()
     return {'status': 200, 'data': agents, 'message': 'Success'}
 
-@app.post("/applications")
+@app.post("/application")
 async def CU_Applications(application:schemas.Application,db:Session=Depends(get_db)):
     if application.id and application.id > 0:
         db_application = db.query(models.Application).filter(models.Application.id == application.id).first()
