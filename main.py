@@ -7,9 +7,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List,Optional
 import json
+import jwt
 from fastapi.middleware.cors import CORSMiddleware
 import logging
-
+from datetime import datetime, timedelta
 app = FastAPI()
 
 # Configure logging
@@ -94,12 +95,31 @@ async def read_options(db: Session = Depends(get_db)):
     options = db.query(models.DocsDropdown).all()
     return {'status': 200, 'data': options, 'message': 'Success'}
 #<----Login---->
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    SECRET_KEY = "09d25e094faa****************f7099f6f0f4caa6cf63b88e8d3e7"
+ 
+# encryption algorithm
+    ALGORITHM = "HS256" 
+    # expire time of the token
+    expire = datetime.utcnow() + timedelta(minutes=3650)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+     
+    # return the generated token
+    return encoded_jwt
 @app.post("/login")
 def login(user: schemas.Credentials,db: Session = Depends(get_db)):
     db_user = db.query(models.Credentials).filter(models.Credentials.email == user.email).first()
     if db_user:
         if db_user.password == user.password:
-            return {'status': 200, 'message': 'User found','data': json.loads(json.dumps(({"role":db_user.is_admin, "token":db_user.token})))}
+            data = {
+                'Role': 'Admin',
+                'email': user.email
+            }
+            token = create_access_token(data=data)
+            return {'status': 200, 'message': 'Login Successfull','data': json.loads(json.dumps(({"Role":"admin","email":user.email, "token":token})))}
+
         else:
             return {'status': 200, 'message': 'Incorrect Password'}
     else:
