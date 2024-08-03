@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, Request, Query
 from app import models, schemas
 from app.database import engine, SessionLocal
 from sqlalchemy.orm import Session
+from sqlalchemy import desc
 import re
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -94,6 +95,30 @@ async def create_option(option: schemas.DropdownOptionCreate, db: Session = Depe
 async def read_options(db: Session = Depends(get_db)):
     options = db.query(models.DocsDropdown).all()
     return {'status': 200, 'data': options, 'message': 'Success'}
+@app.get("/application/status")
+async def application_status(   ):
+    statuses = ["New Application",
+                "Application Uploaded on CRM",
+                "Application Uploaded on CRM",
+                "Conditional Offer Letter",
+                "On Hold",
+                "Finance Approved",
+                "GTE Submitted",
+                "GTE Approved",
+                "Full Offer",
+                "Fees Paid",
+                "COE Issued",
+                "Visa Lodged",
+                "Visa Approved",
+                "Application Withdrawn",
+                "Rejected by  University",
+                "Visa Refusal",
+                "Visa Withdrawn",
+                "Visa Unidentified",
+                "Refund Applied",
+                "Refund Processed",
+                "Pending document"]
+    return {"response": 200, "data": statuses, "message":"Success"}
 #<----Login---->
 def create_access_token(data: dict):
     to_encode = data.copy()
@@ -113,12 +138,16 @@ def login(user: schemas.Credentials,db: Session = Depends(get_db)):
     db_user = db.query(models.Credentials).filter(models.Credentials.email == user.email).first()
     if db_user:
         if db_user.password == user.password:
+            if db_user.is_admin:
+                position='Admin'
+            else:
+                position='Employee'
             data = {
-                'Role': 'Admin',
+                'Role': position,
                 'email': user.email
             }
             token = create_access_token(data=data)
-            return {'status': 200, 'message': 'Login Successfull','data': json.loads(json.dumps(({"Role":"admin","email":user.email, "token":token})))}
+            return {'status': 200, 'message': 'Login Successfull','data': json.loads(json.dumps(({"role":position,"email":user.email, "token":token})))}
 
         else:
             return {'status': 200, 'message': 'Incorrect Password'}
@@ -127,11 +156,27 @@ def login(user: schemas.Credentials,db: Session = Depends(get_db)):
         return {'status': 200,'data':'User Not found    ','message': 'User Not found'}
 #</----Login----/>
 
+
+#<----Dashboard----->
+@app.get("/Dashboard/")
+async def Dashboard( db: Session = Depends(get_db)):
+    Student_data = db.query(models.User).order_by(desc(models.User.id)).limit(2).all()
+    count_student=db.query(models.User).count()
+    count_application=db.query(models.Application).count()
+    count_agent=db.query(models.agent_data).count()
+    total_count=[
+        {"student_count":count_student},
+        {"Application_count":count_application},
+        {"Agent_count":count_agent}
+    ]
+    return {'status': 200, 'data': [total_count,Student_data], 'message': 'Success'}
+#</----Dashboard----/>
+
+
+
 #<----Student Detils---->
 @app.get("/users/")
-async def read_users(name: Optional[str] = Query(None),db: Session = Depends(get_db)):
-     
-    
+async def read_users(name: Optional[str] = Query(None), db: Session = Depends(get_db)):
     if name:
         user_data = db.query(models.User).filter(models.User.name.ilike(f"%{name}%")).all()
         
@@ -139,7 +184,10 @@ async def read_users(name: Optional[str] = Query(None),db: Session = Depends(get
             return {'status': 200, 'data': [], 'message': 'Success'}
     else:
         user_data = db.query(models.User).all()
+    
     return {'status': 200, 'data': user_data, 'message': 'Success'}
+
+
 @app.get("/users/{id}")
 async def get_user(id: int, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.id == id).first()
@@ -249,40 +297,68 @@ async def delete_agent(id: int, db: Session = Depends(get_db)):
     db.commit()
     return {'status': 200, 'data': 'Agent Deleted', 'message': 'Agent Deleted'}
 #<----Applications---->
+uni_data = load_json('address/universities.json')
+@app.get("/universities/{uni_name}")
+async def get_states(uni_name: str):
+    data=[]
+    for uni in uni_data:
+        if uni["country"] == uni_name:
+            data.append(uni["name"].upper())
+    
+    if len(data)==0:
+        return {'status': 200, 'data': data, 'message': 'Univerity not Found'}
+    data.sort()
+    return {'status': 200, 'data': data, 'message': 'Univerity Found'}
+
+
+
 # Get all applications
 @app.get("/application")
 async def get_all_applications(name: Optional[str] = Query(None),db: Session = Depends(get_db)):
 
     if name:
-        agents = db.query(models.Application).filter(models.Application.name.ilike(f"%{name}%")).all()
-        
+        agents = db.query(models.Application).filter(models.Application.student_name.ilike(f"%{name}%") ).all()
         if not agents:
-            raise HTTPException(status_code=404, detail="Application not found")
+            return {'status': 200, 'data': [], 'message': 'Application not found'}
     else:
         agents = db.query(models.Application).all()
     return {'status': 200, 'data': agents, 'message': 'Success'}
 
 @app.post("/application")
-async def CU_Applications(application:schemas.Application,db:Session=Depends(get_db)):
-    if application.id and application.id > 0:
-        db_application = db.query(models.Application).filter(models.Application.id == application.id).first()
-        if db_application:
-            # Update existing agent
-            for key, value in application.dict(exclude_unset=True).items():
-                setattr(db_application, key, value)
-            db.commit()
-            db.refresh(db_application)
-            return {'status': 200,'data':db_application ,'message': 'application Details Updated'}
+async def CU_Applications(application: schemas.Application, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.id == application.student_id).first()
+
+    if user:
+        if application.id and application.id > 0:
+            db_application = db.query(models.Application).filter(models.Application.id == application.id).first()
+            if db_application:
+                # Update existing application
+                for key, value in application.dict(exclude_unset=True).items():
+                    setattr(db_application, key, value)
+                
+                # Set the student_name from the User table
+                db_application.student_name = user.name
+
+                db.commit()
+                db.refresh(db_application)
+                return {'status': 200, 'data': db_application, 'message': 'Application details updated'}
+            else:
+                raise HTTPException(status_code=404, detail="Application not found")
         else:
-            raise HTTPException(status_code=404, detail="Agent not found")
+            # Create new application without an id
+            new_application = models.Application(**application.dict(exclude={"id"}))
+            
+            # Set the student_name from the User table
+            new_application.student_name = user.name
+
+            db.add(new_application)
+            db.commit()
+            db.refresh(new_application)
+            return {'status': 200, 'data': new_application, 'message': 'New application created'}
     else:
-        # Create new agent without an id
-        new_application = models.Application(**application.dict(exclude={"id"}))
-        db.add(new_application)
-        db.commit()
-        db.refresh(new_application)
-        return {'status': 200,'data':application , 'message': 'New application Created'}
-    return
+        return {'status': 404, 'data': 'No student with given ID', 'message': 'No student with given ID'}
+
+
 @app.delete("/application_delete/{id}")
 async def delete_application(id: int, db: Session = Depends(get_db)):
     Application = db.query(models.Application).filter(models.Application.id == id).first()

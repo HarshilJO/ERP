@@ -33,6 +33,7 @@ class Application(Base):
     __tablename__ = 'application'
     id = Column(Integer, primary_key=True, index=True)
     student_id = Column(Integer, ForeignKey('users.id'))
+    student_name = Column(String)
     university_name = Column(String)
     intake = Column(VARCHAR)
     program = Column(String)
