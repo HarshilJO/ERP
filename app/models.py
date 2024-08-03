@@ -11,13 +11,15 @@ class User(Base):
     phone = Column(Integer)
     address = Column(String)
     city=Column(String)
-    state=Column(String)    
+    state=Column(String)   
+    country=Column(String) 
     gender = Column(String)
     passport = Column(String)
     pass_Expiry = Column(String)
     agent = Column(String)
     single = Column(String)
     docs = Column(JSON)
+    logged_by=Column(String)
     applications = relationship("Application", back_populates="user")
 
 class Admin(Base):

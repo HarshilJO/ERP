@@ -11,13 +11,14 @@ class User(BaseModel):
     email: str
     phone: int
     address: str
+    country:str
     state:str
     city:str
     gender: str
     passport: str
     pass_Expiry: str
     agent: str
-    single: bool
+    single: str
     docs: list
 
 class Country(BaseModel):

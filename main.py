@@ -130,6 +130,8 @@ def login(user: schemas.Credentials,db: Session = Depends(get_db)):
 #<----Student Detils---->
 @app.get("/users/")
 async def read_users(name: Optional[str] = Query(None),db: Session = Depends(get_db)):
+     
+    
     if name:
         user_data = db.query(models.User).filter(models.User.name.ilike(f"%{name}%")).all()
         
@@ -138,10 +140,31 @@ async def read_users(name: Optional[str] = Query(None),db: Session = Depends(get
     else:
         user_data = db.query(models.User).all()
     return {'status': 200, 'data': user_data, 'message': 'Success'}
-
+@app.get("/users/{id}")
+async def get_user(id: int, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.id == id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User Not Found")
+    return {'status': 200, 'data': user, 'message': 'Success'}
 # User creation or update endpoint
+async def get_role_from_token(request: Request):
+    headers = dict(request.headers)
+    token_with_bearer = headers.get("authorization")
+    if not token_with_bearer:
+        raise HTTPException(status_code=401, detail="Authorization header missing")
+
+    final_token = token_with_bearer.replace("Bearer ", "")
+    payload = jwt.decode(final_token, options={"verify_signature": False})
+    role_name = payload.get("Role")
+    if not role_name:
+        raise HTTPException(status_code=400, detail="Role not found in token")
+    
+    return role_name
+
 @app.post("/users/")
-async def create_or_update_user(user: schemas.User, db: Session = Depends(get_db)):
+async def create_or_update_user(user: schemas.User, request:Request,db: Session = Depends(get_db)):
+    role_name = await get_role_from_token(request)
+
     phone_str = str(user.phone)
     # Validate phone number as a string
     a = re.fullmatch(r'[6-9][0-9]{9}', phone_str)
@@ -158,15 +181,17 @@ async def create_or_update_user(user: schemas.User, db: Session = Depends(get_db
             # Update existing user
             for key, value in user.dict(exclude_unset=True).items():
                 setattr(db_user, key, value)
+            db_user.logged_by = role_name 
             db.commit()
             db.refresh(db_user) 
             return {'status': 200, 'data': db_user, 'message': 'Success'}
     # Create new user
-    db_user = models.User(**user.dict(exclude={"id"}))
+    db_user = models.User(**user.dict(exclude={"id"}),logged_by=role_name)
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
     return {'status': 200,  'message': 'Success'}
+
 @app.delete("/users/{user_id}")
 async def delete_user(user_id: int, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
@@ -174,7 +199,7 @@ async def delete_user(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="User not found")
     db.delete(db_user)
     db.commit()
-    return {"detail": "User deleted"}
+    return {'status': 204, 'message': 'Student  Deleted'}
 #</----Student Details----/>
 # Agent Details
 @app.get("/agent")
@@ -190,7 +215,12 @@ async def get_all_agent(name: Optional[str] = Query(None),db: Session = Depends(
     return {'status': 200, 'data': agents, 'message': 'Success'}
 
 @app.post("/agents/")
-async def CU_agent(agent: schemas.AgentSchema, db: Session = Depends(get_db)):
+async def CU_agent(request: Request,agent: schemas.AgentSchema, db: Session = Depends(get_db)):
+    headers = dict(request.headers)
+    token_withBearer=headers["authorization"]
+    final_token=token_withBearer.replace("Bearer ", "")
+    payload = jwt.decode(final_token, options={"verify_signature": False})
+    
     if agent.id and agent.id > 0:
         db_agent = db.query(models.agent_data).filter(models.agent_data.id == agent.id).first()
         if db_agent:

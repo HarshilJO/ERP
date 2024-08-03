@@ -1,60 +1,23 @@
-# import libraries
-from fastapi import FastAPI, status, HTTPException
-from jose import JWTError, jwt
-from pydantic import BaseModel
-from datetime import datetime, timedelta
+import stomp
 
-# replace it with your 32 bit secret key
-SECRET_KEY = "09d25e094faa****************f7099f6f0f4caa6cf63b88e8d3e7"
+class MyListener(stomp.ConnectionListener):
+    def on_message(self, headers, message):
+        print('Received message:', message)
 
-# encryption algorithm
-ALGORITHM = "HS256"
+# Connect to the broker
+conn = stomp.Connection([('localhost', 4222)])
+conn.set_listener('', MyListener())
+conn.connect('user', 'password', wait=True)
 
-# Pydantic Model that will be used in the 
-# token endpoint for the response
-class Token(BaseModel):
-	access_token: str
-	token_type: str
+# Send a message to the destination
+conn.send(destination='/queue/test', body='Hello, STOMP!')
 
+# Subscribe to the destination to receive messages
+conn.subscribe(destination='/queue/test', id=1, ack='auto')
 
-# Initialise the app
-app = FastAPI()
+# Keep the connection alive to receive messages
+import time
+time.sleep(2)
 
-# this function will create the token
-# for particular data
-def create_access_token(data: dict):
-	to_encode = data.copy()
-	
-	# expire time of the token
-	expire = datetime.utcnow() + timedelta(minutes=15)
-	to_encode.update({"exp": expire})
-	encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-	
-	# return the generated token
-	return encoded_jwt
-
-# the endpoint to get the token
-@app.get("/get_token")
-async def get_token():
-
-	# data to be signed using token
-	data = {
-		'info': 'secret information',
-		'from': 'GFG'
-	}
-	token = create_access_token(data=data)
-	return {'token': token}
-
-# the endpoint to verify the token
-@app.post("/verify_token")
-async def verify_token(token: str):
-	try:
-		# try to decode the token, it will 
-		# raise error if the token is not correct
-		payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-		return payload
-	except JWTError:
-		raise HTTPException(
-			status_code=status.HTTP_401_UNAUTHORIZED,
-			detail="Could not validate credentials",
-		)
+# Disconnect
+conn.disconnect()
