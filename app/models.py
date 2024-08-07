@@ -36,7 +36,10 @@ class Application(Base):
     student_name = Column(String)
     university_name = Column(String)
     intake = Column(VARCHAR)
+    program_level=Column(String)
     program = Column(String)
+    status = Column(String)
+    timestamp=Column(String)
     user = relationship("User", back_populates="applications")
 
 class DocsDropdown(Base):

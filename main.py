@@ -12,6 +12,7 @@ import jwt
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 from datetime import datetime, timedelta
+import pandas as pd
 app = FastAPI()
 
 # Configure logging
@@ -160,16 +161,38 @@ def login(user: schemas.Credentials,db: Session = Depends(get_db)):
 #<----Dashboard----->
 @app.get("/Dashboard/")
 async def Dashboard( db: Session = Depends(get_db)):
-    Student_data = db.query(models.User).order_by(desc(models.User.id)).limit(2).all()
+    timestamps=db.query(models.Application.timestamp).all()
+    timestamps = [t[0] for t in timestamps]
+    df = pd.DataFrame(timestamps, columns=['timestamp'])
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df['month'] = df['timestamp'].dt.month
+    month_counts = df['month'].value_counts().sort_index()
+    month_names = {1: 'January', 2: 'February', 3: 'March', 4: 'April', 5: 'May', 6: 'June',
+                   7: 'July', 8: 'August', 9: 'September', 10: 'October', 11: 'November', 12: 'December'}
+    month_counts.index = month_counts.index.map(month_names)
+    radialBar = [{"label": month, "series": count} for month, count in month_counts.items()]
+
+    # print(month_counts)
+    Student_data = db.query(models.User).order_by(desc(models.User.id)).limit(4).all()
     count_student=db.query(models.User).count()
     count_application=db.query(models.Application).count()
     count_agent=db.query(models.agent_data).count()
-    total_count=[
-        {"student_count":count_student},
-        {"Application_count":count_application},
-        {"Agent_count":count_agent}
-    ]
-    return {'status': 200, 'data': [total_count,Student_data], 'message': 'Success'}
+    count_pending_application = db.query(models.Application).filter(models.Application.status != "Application Completed").count()
+    count_done_application = db.query(models.Application).filter(models.Application.status == "Application Completed").count()
+    total_count={"student_count":count_student,
+         "Application_count":count_application,
+         "Agent_count":count_agent,
+         "Application_Completed":count_done_application,
+         "Application_Incomplete": count_pending_application,
+         "RadialBar":radialBar,
+         "data":Student_data
+         }
+        
+        
+        
+        
+    
+    return {'status': 200, 'data': total_count, 'message': 'Success'}
 #</----Dashboard----/>
 
 
@@ -200,7 +223,6 @@ async def get_role_from_token(request: Request):
     token_with_bearer = headers.get("authorization")
     if not token_with_bearer:
         raise HTTPException(status_code=401, detail="Authorization header missing")
-
     final_token = token_with_bearer.replace("Bearer ", "")
     payload = jwt.decode(final_token, options={"verify_signature": False})
     role_name = payload.get("Role")
@@ -249,6 +271,11 @@ async def delete_user(user_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {'status': 204, 'message': 'Student  Deleted'}
 #</----Student Details----/>
+@app.get("/agent_name")
+async def agent_name(db: Session = Depends(get_db)):
+    agent_names = db.query(models.agent_data.id, models.agent_data.name).all()
+    agents_list = [{"id": id, "name": name} for id, name in agent_names]
+    return {'status': 200, 'data': agents_list, 'message': 'Success'}
 # Agent Details
 @app.get("/agent")
 async def get_all_agent(name: Optional[str] = Query(None),db: Session = Depends(get_db)):
@@ -310,8 +337,6 @@ async def get_states(uni_name: str):
     data.sort()
     return {'status': 200, 'data': data, 'message': 'Univerity Found'}
 
-
-
 # Get all applications
 @app.get("/application")
 async def get_all_applications(name: Optional[str] = Query(None),db: Session = Depends(get_db)):
@@ -329,6 +354,9 @@ async def CU_Applications(application: schemas.Application, db: Session = Depend
     user = db.query(models.User).filter(models.User.id == application.student_id).first()
 
     if user:
+        
+        rent_time = datetime.utcnow()
+        current_time=rent_time.strftime('%Y-%m-%d %H:%M:%S')
         if application.id and application.id > 0:
             db_application = db.query(models.Application).filter(models.Application.id == application.id).first()
             if db_application:
@@ -338,6 +366,7 @@ async def CU_Applications(application: schemas.Application, db: Session = Depend
                 
                 # Set the student_name from the User table
                 db_application.student_name = user.name
+                db_application.timestamp=current_time
 
                 db.commit()
                 db.refresh(db_application)
@@ -347,10 +376,10 @@ async def CU_Applications(application: schemas.Application, db: Session = Depend
         else:
             # Create new application without an id
             new_application = models.Application(**application.dict(exclude={"id"}))
-            
+            new_application.status="Application Created"
             # Set the student_name from the User table
             new_application.student_name = user.name
-
+            new_application.timestamp=current_time
             db.add(new_application)
             db.commit()
             db.refresh(new_application)

@@ -30,7 +30,9 @@ class Application(BaseModel):
     university_name: str
     program: str
     intake: str
-
+    program:str
+    program_level: str
+    
 class DropdownOptionBase(BaseModel):
     id: int
     name: str
