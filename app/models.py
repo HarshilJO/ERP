@@ -73,3 +73,10 @@ class Credentials(Base):
     email = Column(String)
     password = Column(String)
     token = Column(String)
+
+class Logs(Base):
+    __tablename__ = 'logs'
+    id=Column(Integer,primary_key = True,index = True)
+    operation = Column(String)
+    timestamp = Column(String)
+    details = Column(String)

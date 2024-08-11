@@ -76,3 +76,10 @@ class Credentials(BaseModel):
 class application_status(BaseModel):
     id:int
     name:str
+
+class Logs(BaseModel):
+    id: Optional[int] = Field(None)
+    operation:str
+    timestamp:str
+    details:str
+    
