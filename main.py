@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, Request, Query
 from app import models, schemas
 from app.database import engine, SessionLocal
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc,distinct,func
 import re
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -98,28 +98,41 @@ async def read_options(db: Session = Depends(get_db)):
     return {'status': 200, 'data': options, 'message': 'Success'}
 @app.get("/application/status")
 async def application_status(   ):
-    statuses = ["New Application",
-                "Application Uploaded on CRM",
-                "Application Uploaded on CRM",
-                "Conditional Offer Letter",
-                "On Hold",
-                "Finance Approved",
-                "GTE Submitted",
-                "GTE Approved",
-                "Full Offer",
-                "Fees Paid",
-                "COE Issued",
-                "Visa Lodged",
-                "Visa Approved",
-                "Application Withdrawn",
-                "Rejected by  University",
-                "Visa Refusal",
-                "Visa Withdrawn",
-                "Visa Unidentified",
-                "Refund Applied",
-                "Refund Processed",
-                "Pending document"]
+    statuses = [
+    {"id": 1, "label": "Application Created"},
+    {"id": 2, "label": "Application Completed"},
+    {"id": 3, "label": "Application Uploaded on CRM"},
+    {"id": 4, "label": "Conditional Offer Letter"},
+    {"id": 5, "label": "On Hold"},
+    {"id": 6, "label": "Finance Approved"},
+    {"id": 7, "label": "GTE Submitted"},
+    {"id": 8, "label": "GTE Approved"},
+    {"id": 9, "label": "Full Offer"},
+    {"id": 10, "label": "Fees Paid"},
+    {"id": 11, "label": "COE Issued"},
+    {"id": 12, "label": "Visa Lodged"},
+    {"id": 13, "label": "Visa Approved"},
+    {"id": 14, "label": "Application Withdrawn"},
+    {"id": 15, "label": "Rejected by University"},
+    {"id": 16, "label": "Visa Refusal"},
+    {"id": 17, "label": "Visa Withdrawn"},
+    {"id": 18, "label": "Visa Unidentified"},
+    {"id": 19, "label": "Refund Applied"},
+    {"id": 20, "label": "Refund Processed"},
+    {"id": 21, "label": "Pending document"}
+]
+
     return {"response": 200, "data": statuses, "message":"Success"}
+@app.post("/application_status_update")
+async def app_status_update(app_status:schemas.application_status,db: Session = Depends(get_db)):
+
+
+    db_user = db.query(models.Application).filter(models.Application.id == app_status.id).first()
+    db_user.status = app_status.name
+    db.commit()
+    db.refresh(db_user)
+    return {"response": 200, "data": 'Application Status Updated', "message": "Application Status Updated"}
+
 #<----Login---->
 def create_access_token(data: dict):
     to_encode = data.copy()
@@ -171,7 +184,11 @@ async def Dashboard( db: Session = Depends(get_db)):
                    7: 'July', 8: 'August', 9: 'September', 10: 'October', 11: 'November', 12: 'December'}
     month_counts.index = month_counts.index.map(month_names)
     radialBar = [{"label": month, "series": count} for month, count in month_counts.items()]
-
+    result=db.query(models.User.agent,func.count(models.User.id)).group_by(models.User.agent).all()
+    donut=[]
+    for agent,count in result:
+        donut.append({"label":agent,"series":count})
+    # print(donut)
     # print(month_counts)
     Student_data = db.query(models.User).order_by(desc(models.User.id)).limit(4).all()
     count_student=db.query(models.User).count()
@@ -185,14 +202,11 @@ async def Dashboard( db: Session = Depends(get_db)):
          "Application_Completed":count_done_application,
          "Application_Incomplete": count_pending_application,
          "RadialBar":radialBar,
+         "donut":donut,
          "data":Student_data
+
          }
-        
-        
-        
-        
-    
-    return {'status': 200, 'data': total_count, 'message': 'Success'}
+    return {'status': 200, 'data':total_count , 'message': 'Success'}
 #</----Dashboard----/>
 
 
@@ -210,7 +224,11 @@ async def read_users(name: Optional[str] = Query(None), db: Session = Depends(ge
     
     return {'status': 200, 'data': user_data, 'message': 'Success'}
 
-
+@app.get("/user_name")
+async def user_name(db: Session = Depends(get_db)):
+    agent_names = db.query(models.User.id, models.User.name).all()
+    agents_list = [{"id": id, "name": name} for id, name in agent_names]
+    return {'status': 200, 'data': agents_list, 'message': 'Success'}
 @app.get("/users/{id}")
 async def get_user(id: int, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.id == id).first()

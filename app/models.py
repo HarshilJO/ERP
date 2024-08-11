@@ -34,6 +34,7 @@ class Application(Base):
     id = Column(Integer, primary_key=True, index=True)
     student_id = Column(Integer, ForeignKey('users.id'))
     student_name = Column(String)
+    Country=Column(String)
     university_name = Column(String)
     intake = Column(VARCHAR)
     program_level=Column(String)

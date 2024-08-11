@@ -27,6 +27,7 @@ class Country(BaseModel):
 class Application(BaseModel):
     id: Optional[int] = Field(None)
     student_id: int
+    Country:str
     university_name: str
     program: str
     intake: str
@@ -71,3 +72,7 @@ class Credentials(BaseModel):
     email:str
     password:str
     token:Optional[str]=Field(None)
+
+class application_status(BaseModel):
+    id:int
+    name:str
