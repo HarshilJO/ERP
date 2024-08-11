@@ -484,4 +484,6 @@ async def delete_application(id: int, db: Session = Depends(get_db)):
     db.delete(Application)
     db.commit()
     return {'status': 204, 'message': 'Application Deleted'}
-#</----Applications/---->
+#</----Applications/---->\
+
+# Nothing NEW
