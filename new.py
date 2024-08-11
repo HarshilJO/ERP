@@ -486,4 +486,4 @@ async def delete_application(id: int, db: Session = Depends(get_db)):
     return {'status': 204, 'message': 'Application Deleted'}
 #</----Applications/---->\
 
-# Nothing NEW
+# Nothing NEW2
