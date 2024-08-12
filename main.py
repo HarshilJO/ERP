@@ -172,7 +172,7 @@ def create_access_token(data: dict):
     SECRET_KEY = "09d25e094faa****************f7099f6f0f4caa6cf63b88e8d3e7"
  
 # encryption algorithm
-    ALGORITHM = "HS256" 
+    ALGORITHM = "HS256"
     # expire time of the token
     expire = datetime.utcnow() + timedelta(minutes=3650)
     to_encode.update({"exp": expire})
@@ -199,7 +199,7 @@ def login(user: schemas.Credentials,db: Session = Depends(get_db)):
         else:
             return {'status': 200, 'message': 'Incorrect Password'}
     else:
-        
+       
         return {'status': 200,'data':'User Not found    ','message': 'User Not found'}
 #</----Login----/>
 
@@ -249,12 +249,12 @@ async def Dashboard( db: Session = Depends(get_db)):
 async def read_users(name: Optional[str] = Query(None), db: Session = Depends(get_db)):
     if name:
         user_data = db.query(models.User).filter(models.User.name.ilike(f"%{name}%")).all()
-        
+       
         if not user_data:
             return {'status': 200, 'data': [], 'message': 'Success'}
     else:
         user_data = db.query(models.User).all()
-    
+   
     return {'status': 200, 'data': user_data, 'message': 'Success'}
 
 @app.get("/user_name")
@@ -279,7 +279,7 @@ async def get_role_from_token(request: Request):
     role_name = payload.get("Role")
     if not role_name:
         raise HTTPException(status_code=400, detail="Role not found in token")
-    
+   
     return role_name
 
 
@@ -325,9 +325,9 @@ async def create_or_update_user(user: schemas.User, request:Request,db: Session 
             db.add(new_log)
             for key, value in user.dict(exclude_unset=True).items():
                 setattr(db_user, key, value)
-            db_user.logged_by = role_name 
+            db_user.logged_by = role_name
             db.commit()
-            db.refresh(db_user) 
+            db.refresh(db_user)
             db.refresh(new_log)
            
             return {'status': 200, 'data': db_user, 'message': 'Success'}
@@ -367,7 +367,7 @@ async def get_all_agent(name: Optional[str] = Query(None),db: Session = Depends(
 
     if name:
         agents = db.query(models.agent_data).filter(models.agent_data.name.ilike(f"%{name}%")).all()
-        
+       
         if not agents:
             return {'status': 200, 'data': [], 'message': 'Success'}
     else:
@@ -380,7 +380,7 @@ async def CU_agent(request: Request,agent: schemas.AgentSchema, db: Session = De
     token_withBearer=headers["authorization"]
     final_token=token_withBearer.replace("Bearer ", "")
     payload = jwt.decode(final_token, options={"verify_signature": False})
-    
+   
     if agent.id and agent.id > 0:
         db_agent = db.query(models.agent_data).filter(models.agent_data.id == agent.id).first()
         if db_agent:
@@ -394,8 +394,8 @@ async def CU_agent(request: Request,agent: schemas.AgentSchema, db: Session = De
             db.add(new_log)
             for key, value in agent.dict(exclude_unset=True).items():
                 setattr(db_agent, key, value)
-            
-          
+           
+         
             db.commit()
             db.refresh(db_agent)
             db.refresh(new_log)
@@ -442,7 +442,7 @@ async def get_states(uni_name: str):
                 "name": university_name
             }
             data.append(university_data)
-    
+   
     # If universities are found, return them
     if data:
         return {
@@ -466,27 +466,47 @@ async def get_user(id: int, db: Session = Depends(get_db)):
     return {'status': 200, 'data': user, 'message': 'Success'}
 
 
-@app.get("/application")
-async def get_all_applications(name: Optional[str] = Query(None), ids: Optional[List[int]] = Query(default=None),db: Session = Depends(get_db)):
+# @app.get("/application")
+# async def get_all_applications(name: Optional[str] = Query(None), ids: Optional[List[int]] = Query(default=None),db: Session = Depends(get_db)):
 
-    if ids:
-        final_result=[]
+#     if ids:
+#         final_result=[]
 
-        for id in ids:
+#         for id in ids:
+#             for j in statuses:
+#                 if id == j["id"]:
+#                   final_result.append(db.query(models.Application).filter(models.Application.status == j["label"] ).all())
+       
+#         return {'status': 200, 'data': final_result, 'message': 'Application not found'}
+
+
+#     if name:
+#         agents = db.query(models.Application).filter(models.Application.student_name.ilike(f"%{name}%") ).all()
+#         if not agents:
+#             return {'status': 200, 'data': [], 'message': 'Application not found'}
+#     else:
+#         agents = db.query(models.Application).all()
+#     return {'status': 200, 'data': agents, 'message': 'Success'}
+@app.post("/application_get")
+async def get_all_applications(query:schemas.ApplicationQuery, db: Session = Depends(get_db)):
+    final_result = []
+
+    if query.ids:
+        for id in query.ids:
             for j in statuses:
                 if id == j["id"]:
-                  final_result.append(db.query(models.Application).filter(models.Application.status == j["label"] ).all())
+                    final_result.extend(db.query(models.Application).filter(models.Application.status == j["label"]).all())
         
-        return {'status': 200, 'data': final_result, 'message': 'Application not found'}
+        return {'status': 200, 'data': final_result, 'message': 'Applications fetched successfully'}
 
-    if name:
-        agents = db.query(models.Application).filter(models.Application.student_name.ilike(f"%{name}%") ).all()
+    if query.name:
+        agents = db.query(models.Application).filter(models.Application.student_name.ilike(f"%{query.name}%")).all()
         if not agents:
             return {'status': 200, 'data': [], 'message': 'Application not found'}
     else:
         agents = db.query(models.Application).all()
-    return {'status': 200, 'data': agents, 'message': 'Success'}
 
+    return {'status': 200, 'data': agents, 'message': 'Success'}
 
 @app.post("/application")
 async def CU_Applications(application: schemas.Application,request:Request, db: Session = Depends(get_db)):
@@ -494,7 +514,6 @@ async def CU_Applications(application: schemas.Application,request:Request, db: 
     user = db.query(models.User).filter(models.User.id == application.student_id).first()
 
     if user:
-        
         rent_time = datetime.utcnow()
         current_time=rent_time.strftime('%Y-%m-%d %H:%M:%S')
         if application.id and application.id > 0:
@@ -508,7 +527,7 @@ async def CU_Applications(application: schemas.Application,request:Request, db: 
                 timestamp=get_time(),
                 details = f"New Application Created for <b>{user.name}</b> by <b>{role_name}</b>")
                 db.add(new_log)
-                
+               
                 # Set the student_name from the User table
                 db_application.student_name = user.name
                 db_application.timestamp=current_time
@@ -537,7 +556,7 @@ async def CU_Applications(application: schemas.Application,request:Request, db: 
             db.add(new_log)
             db.commit()
             db.refresh(new_log)
-            
+           
             return {'status': 200, 'data':'New Application Created', 'message': 'New application created'}
     else:
         return {'status': 404, 'data': 'No student with given ID', 'message': 'No student with given ID'}
@@ -552,5 +571,3 @@ async def delete_application(id: int, db: Session = Depends(get_db)):
     db.commit()
     return {'status': 204,'data':'Application Deleted','message': 'Application Deleted'}
 #</----Applications/---->\
-
-# Nothing NEW2
