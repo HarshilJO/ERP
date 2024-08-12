@@ -44,6 +44,13 @@ def get_db():
     finally:
         db.close()
 
+def get_time():
+    now = datetime.now()
+    formatted_now = now.strftime("%Y-%m-%d %H:%M:%S")
+    return formatted_now
+
+
+
 #<----Validations---->
 NAME_REGEX = re.compile(r"^[a-zA-Z_]+(?: [a-zA-Z_]+)*$")
 EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
@@ -190,7 +197,7 @@ async def Dashboard( db: Session = Depends(get_db)):
         donut.append({"label":agent,"series":count})
     # print(donut)
     # print(month_counts)
-    Student_data = db.query(models.User).order_by(desc(models.User.id)).limit(4).all()
+    Student_data = db.query(models.User).order_by(desc(models.User.id)).limit(6).all()
     count_student=db.query(models.User).count()
     count_application=db.query(models.Application).count()
     count_agent=db.query(models.agent_data).count()
@@ -249,6 +256,21 @@ async def get_role_from_token(request: Request):
     
     return role_name
 
+
+
+# Log apply
+
+
+
+@app.get("/logs/")
+async def get_logs(db: Session = Depends(get_db)):
+    logs = db.query(models.Logs).order_by(desc(models.Logs.id)).limit(4).all()
+    return {'status': 200, 'data': logs, 'message': 'Success'}
+ 
+
+
+
+
 @app.post("/users/")
 async def create_or_update_user(user: schemas.User, request:Request,db: Session = Depends(get_db)):
     role_name = await get_role_from_token(request)
@@ -267,17 +289,36 @@ async def create_or_update_user(user: schemas.User, request:Request,db: Session 
         db_user = db.query(models.User).filter(models.User.id == user.id).first()
         if db_user:
             # Update existing user
+
+
+            new_log = models.Logs(
+                operation="Updated",    
+                timestamp=get_time(),
+                details = f"Student {db_user.name} is Updated"
+            )
+            db.add(new_log)
             for key, value in user.dict(exclude_unset=True).items():
                 setattr(db_user, key, value)
             db_user.logged_by = role_name 
             db.commit()
             db.refresh(db_user) 
+            db.refresh(new_log)
+           
             return {'status': 200, 'data': db_user, 'message': 'Success'}
     # Create new user
     db_user = models.User(**user.dict(exclude={"id"}),logged_by=role_name)
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+
+    new_log = models.Logs(
+                operation="Created",    
+                timestamp=get_time(),
+                details = f"Student {db_user.name} Created"
+            )
+    db.add(new_log)
+    db.commit()
+    db.refresh(new_log)
     return {'status': 200,  'message': 'Success'}
 
 @app.delete("/users/{user_id}")
@@ -287,7 +328,7 @@ async def delete_user(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="User not found")
     db.delete(db_user)
     db.commit()
-    return {'status': 204, 'message': 'Student  Deleted'}
+    return {'status': 204, 'data':'Student Deleted','message': 'Student  Deleted'}
 #</----Student Details----/>
 @app.get("/agent_name")
 async def agent_name(db: Session = Depends(get_db)):
@@ -318,10 +359,20 @@ async def CU_agent(request: Request,agent: schemas.AgentSchema, db: Session = De
         db_agent = db.query(models.agent_data).filter(models.agent_data.id == agent.id).first()
         if db_agent:
             # Update existing agent
+
+            new_log = models.Logs(
+                operation="Updated",    
+                timestamp=get_time(),
+                details = f"Agent {db_agent.name} is Updated"
+            )
+            db.add(new_log)
             for key, value in agent.dict(exclude_unset=True).items():
                 setattr(db_agent, key, value)
+            
+          
             db.commit()
             db.refresh(db_agent)
+            db.refresh(new_log)
             return {'status': 200,'data':db_agent ,'message': 'Agent Details Updated'}
         else:
             raise HTTPException(status_code=404, detail="Agent not found")
@@ -331,6 +382,15 @@ async def CU_agent(request: Request,agent: schemas.AgentSchema, db: Session = De
         db.add(new_agent)
         db.commit()
         db.refresh(new_agent)
+
+        new_log = models.Logs(
+                operation="Created",    
+                timestamp=get_time(),
+                details = f"New agent {new_agent.name} is Created"
+            )
+        db.add(new_log)
+        db.commit()
+        db.refresh(new_log)
         return {'status': 200,'data':new_agent , 'message': 'New Agent Created'}
 
 @app.delete("/agent_delete/{id}")
@@ -345,17 +405,39 @@ async def delete_agent(id: int, db: Session = Depends(get_db)):
 uni_data = load_json('address/universities.json')
 @app.get("/universities/{uni_name}")
 async def get_states(uni_name: str):
-    data=[]
+    data = []
+    count = 0
     for uni in uni_data:
         if uni["country"] == uni_name:
-            data.append(uni["name"].upper())
+            count += 1
+            university_name = uni["name"].upper()
+            university_data = {
+                "id": count,
+                "name": university_name
+            }
+            data.append(university_data)
     
-    if len(data)==0:
-        return {'status': 200, 'data': data, 'message': 'Univerity not Found'}
-    data.sort()
-    return {'status': 200, 'data': data, 'message': 'Univerity Found'}
-
+    # If universities are found, return them
+    if data:
+        return {
+            'status': 200,
+            'data': data,
+            'message': 'Universities Found'
+        }
+    else:
+        # If no universities are found
+        return {
+            'status': 404,
+            'data': [],
+            'message': 'No Universities Found in this Country'
+        }
 # Get all applications
+@app.get("/application/{id}")
+async def get_user(id: int, db: Session = Depends(get_db)):
+    user = db.query(models.Application).filter(models.Application.id == id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Applicaion Not Found")
+    return {'status': 200, 'data': user, 'message': 'Success'}
 @app.get("/application")
 async def get_all_applications(name: Optional[str] = Query(None),db: Session = Depends(get_db)):
 
@@ -368,7 +450,8 @@ async def get_all_applications(name: Optional[str] = Query(None),db: Session = D
     return {'status': 200, 'data': agents, 'message': 'Success'}
 
 @app.post("/application")
-async def CU_Applications(application: schemas.Application, db: Session = Depends(get_db)):
+async def CU_Applications(application: schemas.Application,request:Request, db: Session = Depends(get_db)):
+    role_name = await get_role_from_token(request)
     user = db.query(models.User).filter(models.User.id == application.student_id).first()
 
     if user:
@@ -381,13 +464,18 @@ async def CU_Applications(application: schemas.Application, db: Session = Depend
                 # Update existing application
                 for key, value in application.dict(exclude_unset=True).items():
                     setattr(db_application, key, value)
+                new_log = models.Logs(
+                operation="Created",    
+                timestamp=get_time(),
+                details = f"New Application Created for <b>{user.name}</b> by <b>{role_name}</b>")
+                db.add(new_log)
                 
                 # Set the student_name from the User table
                 db_application.student_name = user.name
                 db_application.timestamp=current_time
-
                 db.commit()
                 db.refresh(db_application)
+                db.refresh(new_log)
                 return {'status': 200, 'data': db_application, 'message': 'Application details updated'}
             else:
                 raise HTTPException(status_code=404, detail="Application not found")
@@ -401,7 +489,17 @@ async def CU_Applications(application: schemas.Application, db: Session = Depend
             db.add(new_application)
             db.commit()
             db.refresh(new_application)
-            return {'status': 200, 'data': new_application, 'message': 'New application created'}
+
+            new_log = models.Logs(
+                operation="Created",    
+                timestamp=get_time(),
+                details = f"New Application Created for <b>{user.name}</b> by <b>{role_name}</b>"
+            )
+            db.add(new_log)
+            db.commit()
+            db.refresh(new_log)
+            
+            return {'status': 200, 'data':'New Application Created', 'message': 'New application created'}
     else:
         return {'status': 404, 'data': 'No student with given ID', 'message': 'No student with given ID'}
 
@@ -413,5 +511,7 @@ async def delete_application(id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application Not Found")
     db.delete(Application)
     db.commit()
-    return {'status': 204, 'message': 'Application Deleted'}
-#</----Applications/---->
+    return {'status': 204,'data':'Application Deleted','message': 'Application Deleted'}
+#</----Applications/---->\
+
+# Nothing NEW2
