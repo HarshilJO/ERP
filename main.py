@@ -57,6 +57,32 @@ EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 PASSWORD_REGEX = re.compile(r"^(?=.[A-Za-z])(?=.\d)[A-Za-z\d]{8,}$")
 PHONE_REGEX = re.compile(r"^[6-9][0-9]{9}$")
 #</----Validations----/>
+
+
+
+statuses = [
+    {"id": 1, "label": "Application Created"},
+    {"id": 2, "label": "Application Completed"},
+    {"id": 3, "label": "Application Uploaded on CRM"},
+    {"id": 4, "label": "Conditional Offer Letter"},
+    {"id": 5, "label": "On Hold"},
+    {"id": 6, "label": "Finance Approved"},
+    {"id": 7, "label": "GTE Submitted"},
+    {"id": 8, "label": "GTE Approved"},
+    {"id": 9, "label": "Full Offer"},
+    {"id": 10, "label": "Fees Paid"},
+    {"id": 11, "label": "COE Issued"},
+    {"id": 12, "label": "Visa Lodged"},
+    {"id": 13, "label": "Visa Approved"},
+    {"id": 14, "label": "Application Withdrawn"},
+    {"id": 15, "label": "Rejected by University"},
+    {"id": 16, "label": "Visa Refusal"},
+    {"id": 17, "label": "Visa Withdrawn"},
+    {"id": 18, "label": "Visa Unidentified"},
+    {"id": 19, "label": "Refund Applied"},
+    {"id": 20, "label": "Refund Processed"},
+    {"id": 21, "label": "Pending document"}
+]
 # Address details
 def load_json(filename):
     with open(filename, 'r', encoding='utf-8') as file:
@@ -438,8 +464,20 @@ async def get_user(id: int, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Applicaion Not Found")
     return {'status': 200, 'data': user, 'message': 'Success'}
+
+
 @app.get("/application")
-async def get_all_applications(name: Optional[str] = Query(None),db: Session = Depends(get_db)):
+async def get_all_applications(name: Optional[str] = Query(None), ids: Optional[List[int]] = Query(default=None),db: Session = Depends(get_db)):
+
+    if ids:
+        final_result=[]
+
+        for id in ids:
+            for j in statuses:
+                if id == j["id"]:
+                  final_result.append(db.query(models.Application).filter(models.Application.status == j["label"] ).all())
+        
+        return {'status': 200, 'data': final_result, 'message': 'Application not found'}
 
     if name:
         agents = db.query(models.Application).filter(models.Application.student_name.ilike(f"%{name}%") ).all()
@@ -448,6 +486,7 @@ async def get_all_applications(name: Optional[str] = Query(None),db: Session = D
     else:
         agents = db.query(models.Application).all()
     return {'status': 200, 'data': agents, 'message': 'Success'}
+
 
 @app.post("/application")
 async def CU_Applications(application: schemas.Application,request:Request, db: Session = Depends(get_db)):
