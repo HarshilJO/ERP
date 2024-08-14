@@ -58,8 +58,6 @@ PASSWORD_REGEX = re.compile(r"^(?=.[A-Za-z])(?=.\d)[A-Za-z\d]{8,}$")
 PHONE_REGEX = re.compile(r"^[6-9][0-9]{9}$")
 #</----Validations----/>
 
-
-
 statuses = [
     {"id": 1, "label": "Application Created"},
     {"id": 2, "label": "Application Completed"},
@@ -129,32 +127,9 @@ async def create_option(option: schemas.DropdownOptionCreate, db: Session = Depe
 async def read_options(db: Session = Depends(get_db)):
     options = db.query(models.DocsDropdown).all()
     return {'status': 200, 'data': options, 'message': 'Success'}
+
 @app.get("/application/status")
 async def application_status(   ):
-    statuses = [
-    {"id": 1, "label": "Application Created"},
-    {"id": 2, "label": "Application Completed"},
-    {"id": 3, "label": "Application Uploaded on CRM"},
-    {"id": 4, "label": "Conditional Offer Letter"},
-    {"id": 5, "label": "On Hold"},
-    {"id": 6, "label": "Finance Approved"},
-    {"id": 7, "label": "GTE Submitted"},
-    {"id": 8, "label": "GTE Approved"},
-    {"id": 9, "label": "Full Offer"},
-    {"id": 10, "label": "Fees Paid"},
-    {"id": 11, "label": "COE Issued"},
-    {"id": 12, "label": "Visa Lodged"},
-    {"id": 13, "label": "Visa Approved"},
-    {"id": 14, "label": "Application Withdrawn"},
-    {"id": 15, "label": "Rejected by University"},
-    {"id": 16, "label": "Visa Refusal"},
-    {"id": 17, "label": "Visa Withdrawn"},
-    {"id": 18, "label": "Visa Unidentified"},
-    {"id": 19, "label": "Refund Applied"},
-    {"id": 20, "label": "Refund Processed"},
-    {"id": 21, "label": "Pending document"}
-]
-
     return {"response": 200, "data": statuses, "message":"Success"}
 @app.post("/application_status_update")
 async def app_status_update(app_status:schemas.application_status,db: Session = Depends(get_db)):
@@ -244,18 +219,39 @@ async def Dashboard( db: Session = Depends(get_db)):
 
 
 
-#<----Student Detils---->
+
 @app.get("/users/")
 async def read_users(name: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    student_info = []
+    states_nam=[]
     if name:
         user_data = db.query(models.User).filter(models.User.name.ilike(f"%{name}%")).all()
-       
         if not user_data:
             return {'status': 200, 'data': [], 'message': 'Success'}
     else:
         user_data = db.query(models.User).all()
-   
-    return {'status': 200, 'data': user_data, 'message': 'Success'}
+        student_info.extend(user_data)
+
+        # # Fetch country and state data
+        # state_names = db.query(models.User.state).all()
+        # country_names = db.query(models.User.country).all()
+        #
+        # # Convert to a list of strings for country and state names
+        # state_names = [name[0] for name in state_names]
+        # country_names = [name[0] for name in country_names]
+        # # for i in country_names:
+        # #     states_nam.append(i)
+        # country_ids = get_countryid(data, country_names)
+        # state_ids = get_stateids(data, state_names)
+        # print(country_ids)
+        # # Update student_info with country_id and state_id
+        # for item in student_info:
+        #     country_id = next((id for id, name in zip(country_ids, country_names) if name == item.country), None)
+        #     state_id = next((id for id, name in zip(state_ids, state_names) if name == item.state), None)
+        #     item.__dict__['country_id'] = country_id
+        #     item.__dict__['state_id'] = state_id
+
+    return {'status': 200, 'data': student_info, 'message': 'Success'}
 
 @app.get("/user_name")
 async def user_name(db: Session = Depends(get_db)):
@@ -293,14 +289,34 @@ async def get_logs(db: Session = Depends(get_db)):
     logs = db.query(models.Logs).order_by(desc(models.Logs.id)).limit(4).all()
     return {'status': 200, 'data': logs, 'message': 'Success'}
  
+def get_countriesid(data, country_name):
+    for country in data:
+        if country['name'] == country_name:
+            return country['id']
+    return None  # Return None if the country name is not found
+
+def get_statesids(data, country_name, state_name):
+    for country in data:
+        if country['name'] == country_name:
+            # If the country name matches, loop through the states in that country
+            for state in country['states']:
+                if state['name'] == state_name:
+                    return state['id']
+    return None  # Return None if the state name is not found within the given country
 
 
 
 
 @app.post("/users/")
 async def create_or_update_user(user: schemas.User, request:Request,db: Session = Depends(get_db)):
+    state_name=user.state
+    country_name=user.country
     role_name = await get_role_from_token(request)
+    country_ids = get_countriesid(data, country_name)
+    state_ids = get_statesids(data,country_name, state_name)
 
+    # print(country_ids)
+    print(state_ids)
     phone_str = str(user.phone)
     # Validate phone number as a string
     a = re.fullmatch(r'[6-9][0-9]{9}', phone_str)
@@ -315,8 +331,6 @@ async def create_or_update_user(user: schemas.User, request:Request,db: Session 
         db_user = db.query(models.User).filter(models.User.id == user.id).first()
         if db_user:
             # Update existing user
-
-
             new_log = models.Logs(
                 operation="Updated",    
                 timestamp=get_time(),
@@ -326,6 +340,8 @@ async def create_or_update_user(user: schemas.User, request:Request,db: Session 
             for key, value in user.dict(exclude_unset=True).items():
                 setattr(db_user, key, value)
             db_user.logged_by = role_name
+            db_user.country_id=country_ids
+            db_user.state_id = state_ids
             db.commit()
             db.refresh(db_user)
             db.refresh(new_log)
@@ -333,6 +349,8 @@ async def create_or_update_user(user: schemas.User, request:Request,db: Session 
             return {'status': 200, 'data': db_user, 'message': 'Success'}
     # Create new user
     db_user = models.User(**user.dict(exclude={"id"}),logged_by=role_name)
+    db_user.country_id = country_ids
+    db_user.state_id = state_ids
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
@@ -342,6 +360,7 @@ async def create_or_update_user(user: schemas.User, request:Request,db: Session 
                 timestamp=get_time(),
                 details = f"Student {db_user.name} Created"
             )
+
     db.add(new_log)
     db.commit()
     db.refresh(new_log)
@@ -362,17 +381,33 @@ async def agent_name(db: Session = Depends(get_db)):
     agents_list = [{"id": id, "name": name} for id, name in agent_names]
     return {'status': 200, 'data': agents_list, 'message': 'Success'}
 # Agent Details
+def get_stateids(country_data, state_names):
+    state_ids = []
+    for name_tuple in state_names:
+        state_name = name_tuple[0]
+        for country in country_data:
+            for state in country.get("states", []):
+                if state["name"].lower() == state_name.lower():
+                    state_ids.append(state["id"])
+                    break
+    return state_ids
 @app.get("/agent")
 async def get_all_agent(name: Optional[str] = Query(None),db: Session = Depends(get_db)):
+        agent_info=[]
+        if name:
+            agents = db.query(models.agent_data).filter(models.agent_data.name.ilike(f"%{name}%")).all()
 
-    if name:
-        agents = db.query(models.agent_data).filter(models.agent_data.name.ilike(f"%{name}%")).all()
-       
-        if not agents:
-            return {'status': 200, 'data': [], 'message': 'Success'}
-    else:
-        agents = db.query(models.agent_data).all()
-    return {'status': 200, 'data': agents, 'message': 'Success'}
+            if not agents:
+                return {'status': 200, 'data': [], 'message': 'Success'}
+        else:
+            agents = db.query(models.agent_data).all()
+            agent_info.extend(agents)
+            state_name = db.query(models.agent_data.state).all()
+            state_id = get_stateids(data, state_name)
+            for id in state_id :
+                for item in agent_info:
+                    item.__dict__['state_id'] = id
+        return {'status': 200, 'data': agent_info, 'message': 'Success'}
 
 @app.post("/agents/")
 async def CU_agent(request: Request,agent: schemas.AgentSchema, db: Session = Depends(get_db)):
@@ -468,7 +503,14 @@ async def get_user(id: int, db: Session = Depends(get_db)):
 
 # @app.get("/application")
 # async def get_all_applications(name: Optional[str] = Query(None), ids: Optional[List[int]] = Query(default=None),db: Session = Depends(get_db)):
-
+#     if ids and name:
+#         final_result=[]
+#         for id in ids:
+#             for j in statuses:
+#                 if id == j["id"]:
+#                   final_result.append(db.query(models.Application).filter(models.Application.status == j["label"] and models.Application.student_name.ilike(f"%{name}%") ).all())
+       
+#         return {'status': 200, 'data': final_result, 'message': 'Application not found'}
 #     if ids:
 #         final_result=[]
 
@@ -487,26 +529,42 @@ async def get_user(id: int, db: Session = Depends(get_db)):
 #     else:
 #         agents = db.query(models.Application).all()
 #     return {'status': 200, 'data': agents, 'message': 'Success'}
+
+
+
+
 @app.post("/application_get")
 async def get_all_applications(query:schemas.ApplicationQuery, db: Session = Depends(get_db)):
     final_result = []
 
-    if query.ids:
+    if query.ids and query.name:
         for id in query.ids:
             for j in statuses:
                 if id == j["id"]:
-                    final_result.extend(db.query(models.Application).filter(models.Application.status == j["label"]).all())
-        
-        return {'status': 200, 'data': final_result, 'message': 'Applications fetched successfully'}
+                    final_result.extend(db.query(models.Application).filter(models.Application.status == j["label"],
+                                                                            models.Application.student_name.ilike(
+                                                                                f"%{query.name}%")).all())
 
-    if query.name:
+        return {'status': 200, 'data': final_result, 'message': 'Applications fetched successfully by id and name'}
+    elif query.ids:
+        for id in query.ids:
+            for j in statuses:
+                if id == j["id"]:
+                    final_result.extend(
+                        db.query(models.Application).filter(models.Application.status == j["label"]).all())
+
+        return {'status': 200, 'data': final_result, 'message': 'Applications fetched successfully by id'}
+
+    elif query.name:
         agents = db.query(models.Application).filter(models.Application.student_name.ilike(f"%{query.name}%")).all()
         if not agents:
             return {'status': 200, 'data': [], 'message': 'Application not found'}
+        else:
+            return {'status': 200, 'data': agents, 'message': 'Success by name'}
     else:
         agents = db.query(models.Application).all()
 
-    return {'status': 200, 'data': agents, 'message': 'Success'}
+    return {'status': 200, 'data': agents, 'message': 'Success all '}
 
 @app.post("/application")
 async def CU_Applications(application: schemas.Application,request:Request, db: Session = Depends(get_db)):

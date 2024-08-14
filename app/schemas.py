@@ -11,7 +11,9 @@ class User(BaseModel):
     email: str
     phone: int
     address: str
+    country_id:Optional[int]=Field(None)
     country:str
+    state_id:Optional[int]=Field(None)
     state:str
     city:str
     gender: str
@@ -82,4 +84,7 @@ class Logs(BaseModel):
     operation:str
     timestamp:str
     details:str
-    
+
+class ApplicationQuery(BaseModel):
+    name: Optional[str] = None
+    ids: Optional[List[int]] = None
