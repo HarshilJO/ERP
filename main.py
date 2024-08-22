@@ -71,7 +71,7 @@ statuses = [
     {"id": 10, "label": "Fees Paid"},
     {"id": 11, "label": "COE Issued"},
     {"id": 12, "label": "Visa Lodged"},
-    {"id": 13, "label": "Visa Approved"},
+    {"id": 13, "label": "Visa Granted"},
     {"id": 14, "label": "Application Withdrawn"},
     {"id": 15, "label": "Rejected by University"},
     {"id": 16, "label": "Visa Refusal"},
@@ -171,11 +171,19 @@ def login(user: schemas.Credentials,db: Session = Depends(get_db)):
             token = create_access_token(data=data)
             return {'status': 200, 'message': 'Login Successfull','data': json.loads(json.dumps(({"role":position,"email":user.email, "token":token})))}
 
-        else:
-            return {'status': 200, 'message': 'Incorrect Password'}
+        # elif  db_user.password != user.password:
+        #         # new_dic={'message':'Incorrect Password or Username','data':'Incorrect Password or Username'}
+        #         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Incorrect Password" ,message='Incorrect Password',data='Incorrect Password or username')
+        elif  db_user.password != user.password:
+            data = {'message': "Note Found",
+                    'data': "Not found"}
+            return JSONResponse(
+                status_code=404,
+                content=data
+            )
     else:
-       
-        return {'status': 200,'data':'User Not found    ','message': 'User Not found'}
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="failed Login")
+        return {'status': 400,'data':'User Not found','message': 'Login Failed'}
 #</----Login----/>
 
 
@@ -204,16 +212,18 @@ async def Dashboard( db: Session = Depends(get_db)):
     count_agent=db.query(models.agent_data).count()
     count_pending_application = db.query(models.Application).filter(models.Application.status != "Application Completed").count()
     count_done_application = db.query(models.Application).filter(models.Application.status == "Application Completed").count()
-    total_count={"student_count":count_student,
-         "Application_count":count_application,
-         "Agent_count":count_agent,
-         "Application_Completed":count_done_application,
-         "Application_Incomplete": count_pending_application,
-         "RadialBar":radialBar,
-         "donut":donut,
-         "data":Student_data
+    total_visa_granted = db.query(models.Application).filter(models.Application.status == "Visa Granted").count()
+    total_count = {"student_count": count_student,
+                   "Application_count": count_application,
+                   "Agent_count": count_agent,
+                   "Application_Completed": count_done_application,
+                   "Application_Incomplete": count_pending_application,
+                   "RadialBar": radialBar,
+                   "donut": donut,
+                   "data": Student_data,
+                   "visa": total_visa_granted
 
-         }
+                   }
     return {'status': 200, 'data':total_count , 'message': 'Success'}
 #</----Dashboard----/>
 
@@ -629,3 +639,78 @@ async def delete_application(id: int, db: Session = Depends(get_db)):
     db.commit()
     return {'status': 204,'data':'Application Deleted','message': 'Application Deleted'}
 #</----Applications/---->\
+
+
+#<----Course Search---->
+
+@app.post("/search_courses/")
+def search_courses(search: schemas.CourseSearch, db: Session = Depends(get_db)):
+    query = db.query(models.CourseName)
+
+    if search.course_name:
+        query = query.filter(models.CourseName.course_name.ilike(f"%{search.course_name}%"))
+    # if search.board:
+    #     query = query.filter(models.CourseAcademicEligibility.board.ilike(f"%{search.board}%"))
+    # if search.minimum:
+    #     query = query.filter(models.CourseAcademicEligibility.minimum == search.minimum)
+    # if search.remarks:
+    #     query = query.filter(models.CourseAcademicEligibility.remarks.ilike(f"%{search.remarks}%"))
+    # if search.university_name:
+    #     query = query.filter(models.CourseUniName.name.ilike(f"%{search.university_name}%"))
+
+    results = query.all()
+    return {'status': 200,'data':results,'message': 'Success'}
+# Visa Granted
+@app.get("/visa/")
+async def get_visa_granted(db: Session = Depends(get_db)):
+    for i in statuses:
+        if i['label'] == "Visa Granted":
+            students1 = db.query(models.Application).filter(models.Application.status == i["label"]).order_by(desc(models.Application.id)).all()
+    return {'status': 200, 'data': students1, 'message': 'Success all '}
+
+@app.get("/get_uni")
+async def get_uni_drop(db: Session = Depends(get_db)):
+
+    uni_data = (
+        db.query(
+            models.CourseName.uni_name,
+            func.count(models.CourseName.id).label('course_count')
+        )
+        .group_by(models.CourseName.uni_name)
+        .all()
+    )
+
+    # Constructing the response
+    agents_list = [
+        {"id": i + 1, "name": uni_name, "count": course_count}
+        for i, (uni_name, course_count) in enumerate(uni_data)
+    ]
+    permit_data = (  # uni_data
+        db.query(
+            models.CourseName.study_permit,
+            func.count(models.CourseName.uni_name).label('course_count')
+        )
+        .group_by(models.CourseName.study_permit)
+        .all()
+    )
+    permit_list = [
+        {"id": i + 1, "name": uni_name, "count": course_count}
+        for i, (uni_name, course_count) in enumerate(permit_data)
+    ]
+    # uni_nm_data = db.query(models.CourseName.course_name).distinct(models.CourseName.course_name).all()
+    # # print(uni_nm_data)
+    # course_list = [{"id": i + 1, "name": uni_name[0], "count": 0} for i, uni_name in enumerate(uni_nm_data)]
+    uni_nm_data = (  # uni_data
+        db.query(
+            models.CourseName.course_name,
+            func.count(models.CourseName.uni_name).label('course_count')
+        )
+        .group_by(models.CourseName.course_name)
+        .all()
+    )
+    course_list = [
+        {"id": i + 1, "name": uni_name, "count": course_count}
+        for i, (uni_name, course_count) in enumerate(uni_nm_data)
+    ]
+    return {'status': 200, 'data': {"uni_data":agents_list,"permit_data":permit_list,"course_data":course_list}, 'message': 'Success'}
+

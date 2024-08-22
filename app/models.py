@@ -82,3 +82,43 @@ class Logs(Base):
     operation = Column(String)
     timestamp = Column(String)
     details = Column(String)
+
+# class CourseAcademicEligibility(Base):
+#     __tablename__ = "course_academic_eligibility"
+#     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+#     course_name_id = Column(Integer, ForeignKey('course_name.id'))
+#     board = Column(String)
+#     minimum = Column(Integer)
+#     remarks = Column(String)
+#     course_name = relationship("CourseName",back_populates="academic_eligibilities")
+# class CourseName(Base):
+#     __tablename__ = "course_name"
+#
+#     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+#     name = Column(String)
+#     uni_name_id = Column(String)
+#     academic_eligibility_id = Column(Integer, ForeignKey('course_academic_eligibility.id'))
+#     academic_eligibilities = relationship("CourseAcademicEligibility",back_populates="course_name")
+class CourseAcademicEligibility(Base):
+    __tablename__ = "course_academic_eligibility"
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    course_name_id = Column(Integer, ForeignKey('course_name.id'))
+    board = Column(String)
+    minimum = Column(Integer)
+    remarks = Column(String)
+
+    # Specify foreign_keys to resolve ambiguity
+    course_name = relationship("CourseName", back_populates="academic_eligibilities", foreign_keys=[course_name_id])
+
+
+class CourseName(Base):
+    __tablename__ = "course_name"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    course_name = Column(String)
+    uni_name = Column(String)  # Changed to Integer for consistency
+    academic_eligibilities = relationship("CourseAcademicEligibility", back_populates="course_name",foreign_keys=[CourseAcademicEligibility.course_name_id])
+    fees=Column(String)
+    scholarship=Column(String)
+    study_permit=Column(Integer)
+

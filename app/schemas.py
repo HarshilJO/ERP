@@ -88,3 +88,13 @@ class Logs(BaseModel):
 class ApplicationQuery(BaseModel):
     name: Optional[str] = None
     ids: Optional[List[int]] = None
+
+class CourseSearch(BaseModel):
+    course_name: Optional[str] = None
+    board: Optional[str] = None
+    minimum: Optional[int] = None
+    remarks: Optional[str] = None
+    university_name: Optional[str] = None
+    fees:Optional[str]=None
+    scholarship:Optional[str]=None
+    study_permit:Optional[int]=None
