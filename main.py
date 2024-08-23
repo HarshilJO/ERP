@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, Request, Query
 from app import models, schemas
 from app.database import engine, SessionLocal
 from sqlalchemy.orm import Session
-from sqlalchemy import desc,distinct,func
+from sqlalchemy import and_, desc,distinct,func, or_
 import re
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -100,7 +100,7 @@ async def get_states(country_id: int):
                 return {'status': 200, 'data': [{"id": state["id"], "name": state["name"]} for state in country["states"]], 'message': 'Success'}
             else:
                 return {'status': 404, 'data': [], 'message': 'No states found for this country'}
-    raise HTTPException(status_code=404, detail="Country not found")
+    
 
 @app.get("/states/{state_id}/cities")
 async def get_cities(state_id: int):
@@ -112,7 +112,7 @@ async def get_cities(state_id: int):
                         return {'status': 200, 'data': [{"id": city["id"], "name": city["name"]} for city in state["cities"]], 'message': 'Success'}
                     else:
                         return {'status': 404, 'data': [], 'message': 'No cities found for this state'}
-    raise HTTPException(status_code=404, detail="State not found")
+
 
 # Docs Dropdown
 @app.post("/docs/", response_model=schemas.DropdownOptionOut)
@@ -169,21 +169,36 @@ def login(user: schemas.Credentials,db: Session = Depends(get_db)):
                 'email': user.email
             }
             token = create_access_token(data=data)
-            return {'status': 200, 'message': 'Login Successfull','data': json.loads(json.dumps(({"role":position,"email":user.email, "token":token})))}
+            content = {'message': "Login Successfull",
+                    'data': json.loads(json.dumps(({"role":position,"email":user.email, "token":token})))
+                    
+                    }
+            
+            response =  JSONResponse(
+                status_code=200,
+                content=content
+            )
+            response.headers["Authorization"] = f"Bearer {token}"
+            return response
 
         # elif  db_user.password != user.password:
         #         # new_dic={'message':'Incorrect Password or Username','data':'Incorrect Password or Username'}
         #         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Incorrect Password" ,message='Incorrect Password',data='Incorrect Password or username')
         elif  db_user.password != user.password:
-            data = {'message': "Note Found",
-                    'data': "Not found"}
+            data = {'message': "Incorrect username or password",
+                    'data': "Incorrect username or password"}
             return JSONResponse(
                 status_code=404,
                 content=data
             )
     else:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="failed Login")
-        return {'status': 400,'data':'User Not found','message': 'Login Failed'}
+        data = {'message': "Incorrect username or password",
+                    'data': "Incorrect username or password"}
+        return JSONResponse(
+                status_code=404,
+                content=data
+            )
+        
 #</----Login----/>
 
 
@@ -250,23 +265,40 @@ async def user_name(db: Session = Depends(get_db)):
     agent_names = db.query(models.User.id, models.User.name).all()
     agents_list = [{"id": id, "name": name} for id, name in agent_names]
     return {'status': 200, 'data': agents_list, 'message': 'Success'}
+
+
 @app.get("/users/{id}")
 async def get_user(id: int, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.id == id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User Not Found")
+        data = {'message': "Not Found",
+                    'data': "Not found"}
+        return JSONResponse(
+                status_code=404,
+                content=data
+            )
     return {'status': 200, 'data': user, 'message': 'Success'}
 # User creation or update endpoint
 async def get_role_from_token(request: Request):
     headers = dict(request.headers)
     token_with_bearer = headers.get("authorization")
     if not token_with_bearer:
-        raise HTTPException(status_code=401, detail="Authorization header missing")
+        data = {'message': "Not Found",
+                    'data': "Not found"}
+        return JSONResponse(
+                status_code=404,
+                content=data
+            )
     final_token = token_with_bearer.replace("Bearer ", "")
     payload = jwt.decode(final_token, options={"verify_signature": False})
     role_name = payload.get("Role")
     if not role_name:
-        raise HTTPException(status_code=400, detail="Role not found in token")
+        data = {'message': "Not Found",
+                    'data': "Not found"}
+        return JSONResponse(
+                status_code=404,
+                content=data
+            )
    
     return role_name
 
@@ -317,8 +349,8 @@ async def create_or_update_user(user: schemas.User, request:Request,db: Session 
     if not EMAIL_REGEX.match(user.email):
         return {'status': 400,  'message': 'Invalid Email'}
     if not PHONE_REGEX.match(phone_str):
-        raise HTTPException(status_code=400, detail='Invalid Phone Number')
-
+        return {'status': 400,  'message': 'Invalid Number'}
+        
     if user.id and user.id > 0:
         db_user = db.query(models.User).filter(models.User.id == user.id).first()
         if db_user:
@@ -362,7 +394,12 @@ async def create_or_update_user(user: schemas.User, request:Request,db: Session 
 async def delete_user(user_id: int, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
     if db_user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        data = {'message': "Not Found",
+                    'data': "Not found"}
+        return JSONResponse(
+                status_code=404,
+                content=data
+            )
     db.delete(db_user)
     db.commit()
     return {'status': 204, 'data':'Student Deleted','message': 'Student  Deleted'}
@@ -428,7 +465,12 @@ async def CU_agent(request: Request,agent: schemas.AgentSchema, db: Session = De
             db.refresh(new_log)
             return {'status': 200,'data':db_agent ,'message': 'Agent Details Updated'}
         else:
-            raise HTTPException(status_code=404, detail="Agent not found")
+            data = {'message': "Not Found",
+                    'data': "Not found"}
+            return JSONResponse(
+                status_code=404,
+                content=data
+            )
     else:
         # Create new agent without an id
         new_agent = models.agent_data(**agent.dict(exclude={"id"}))
@@ -450,7 +492,12 @@ async def CU_agent(request: Request,agent: schemas.AgentSchema, db: Session = De
 async def delete_agent(id: int, db: Session = Depends(get_db)):
     user = db.query(models.agent_data).filter(models.agent_data.id == id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent Not Found")
+        data = {'message': "Not Found",
+                    'data': "Not found"}
+        return JSONResponse(
+                status_code=404,
+                content=data
+            )
     db.delete(user)
     db.commit()
     return {'status': 200, 'data': 'Agent Deleted', 'message': 'Agent Deleted'}
@@ -489,7 +536,12 @@ async def get_states(uni_name: str):
 async def get_user(id: int, db: Session = Depends(get_db)):
     user = db.query(models.Application).filter(models.Application.id == id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Applicaion Not Found")
+        data = {'message': "Not Found",
+                    'data': "Not found"}
+        return JSONResponse(
+                status_code=404,
+                content=data
+            )
     return {'status': 200, 'data': user, 'message': 'Success'}
 
 
@@ -586,7 +638,12 @@ async def CU_Applications(application: schemas.Application,request:Request, db: 
                 db.refresh(new_log)
                 return {'status': 200, 'data': db_application, 'message': 'Application details updated'}
             else:
-                raise HTTPException(status_code=404, detail="Application not found")
+                data = {'message': "Not Found",
+                    'data': "Not found"}
+                return JSONResponse(
+                status_code=404,
+                content=data
+                )
         else:
             # Create new application without an id
             new_application = models.Application(**application.dict(exclude={"id"}))
@@ -616,7 +673,12 @@ async def CU_Applications(application: schemas.Application,request:Request, db: 
 async def delete_application(id: int, db: Session = Depends(get_db)):
     Application = db.query(models.Application).filter(models.Application.id == id).first()
     if not Application:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application Not Found")
+        data = {'message': "Not Found",
+                    'data': "Not found"}
+        return JSONResponse(
+                status_code=404,
+                content=data
+            )
     db.delete(Application)
     db.commit()
     return {'status': 204,'data':'Application Deleted','message': 'Application Deleted'}
@@ -627,32 +689,37 @@ async def delete_application(id: int, db: Session = Depends(get_db)):
 
 @app.post("/search_courses/")
 def search_courses(search: schemas.CourseSearch, db: Session = Depends(get_db)):
-    if search.course_name:
-        courses_res = search.course_name
-        response = []
-        # return (courses_res)
-        for courses in courses_res:
-            query=db.query(models.CourseName).filter(models.CourseName.course_name.ilike(f"%{courses}%")).all()
-            response.append(query)
-        return {'status': 200, 'data': [item for sublist in response for item in sublist], 'message': 'Success  '}
-    # [{"id": i["id"], "course_name": i["course_name"], "uni_name": i["uni_name"], "fees": i["fees"]} for j in response for i in j]
-    if search.university_name:
-        courses_res = search.university_name
-        response = []
-        # return (courses_res)
-        for courses in courses_res:
-            query=db.query(models.CourseName).filter(models.CourseName.uni_name.ilike(f"%{courses}%")).all()
-            response.append(query)
-        return {'status': 200, 'data': [item for sublist in response for item in sublist], 'message': 'Success  '}
-    if search.study_permit:
-        courses_res = search.study_permit
-        response = []
-        # return (courses_res)
-        for courses in courses_res:
-            query=db.query(models.CourseName).filter(models.CourseName.study_permit == courses).all()
-            response.append(query)
-        return {'status': 200, 'data': [item for sublist in response for item in sublist], 'message': 'Success  '}
+    
+    response = []
+    conditions = []
+    if search.course_name or search.university_name or search.study_permit:
+        if search.course_name:
+                name_conditions = [models.CourseName.course_name.ilike(f"%{cname}%") for cname in search.course_name]
+                conditions.append(or_(*name_conditions))
 
+
+        if search.university_name:
+                uni_conditions = [models.CourseName.uni_name.ilike(f"%{uni}%") for uni in search.university_name]
+                conditions.append(or_(*uni_conditions))
+
+
+        if search.study_permit:
+                permit_conditions = [models.CourseName.study_permit == permit for permit in search.study_permit]
+                conditions.append(or_(*permit_conditions))
+
+            
+        final_condition = and_(*conditions)
+
+            
+        query = db.query(models.CourseName).filter(final_condition).all()
+                
+        response.append(query)
+
+
+        return {'status': 200, 'data':  response, 'message': 'Success  '}
+    else:
+        query = db.query(models.CourseName).all()
+        return {'status': 200, 'data':  query, 'message': 'Success  '}
 
 
 # Visa Granted
