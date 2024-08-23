@@ -90,11 +90,11 @@ class ApplicationQuery(BaseModel):
     ids: Optional[List[int]] = None
 
 class CourseSearch(BaseModel):
-    course_name: Optional[str] = None
+    course_name: Optional[List[str]] = None
     board: Optional[str] = None
     minimum: Optional[int] = None
     remarks: Optional[str] = None
-    university_name: Optional[str] = None
+    university_name: Optional[List[str]] = None
     fees:Optional[str]=None
     scholarship:Optional[str]=None
-    study_permit:Optional[int]=None
+    study_permit:Optional[List[int]]=None

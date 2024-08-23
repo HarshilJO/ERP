@@ -242,24 +242,6 @@ async def read_users(name: Optional[str] = Query(None), db: Session = Depends(ge
         user_data = db.query(models.User).all()
         student_info.extend(user_data)
 
-        # # Fetch country and state data
-        # state_names = db.query(models.User.state).all()
-        # country_names = db.query(models.User.country).all()
-        #
-        # # Convert to a list of strings for country and state names
-        # state_names = [name[0] for name in state_names]
-        # country_names = [name[0] for name in country_names]
-        # # for i in country_names:
-        # #     states_nam.append(i)
-        # country_ids = get_countryid(data, country_names)
-        # state_ids = get_stateids(data, state_names)
-        # print(country_ids)
-        # # Update student_info with country_id and state_id
-        # for item in student_info:
-        #     country_id = next((id for id, name in zip(country_ids, country_names) if name == item.country), None)
-        #     state_id = next((id for id, name in zip(state_ids, state_names) if name == item.state), None)
-        #     item.__dict__['country_id'] = country_id
-        #     item.__dict__['state_id'] = state_id
 
     return {'status': 200, 'data': student_info, 'message': 'Success'}
 
@@ -645,21 +627,34 @@ async def delete_application(id: int, db: Session = Depends(get_db)):
 
 @app.post("/search_courses/")
 def search_courses(search: schemas.CourseSearch, db: Session = Depends(get_db)):
-    query = db.query(models.CourseName)
-
     if search.course_name:
-        query = query.filter(models.CourseName.course_name.ilike(f"%{search.course_name}%"))
-    # if search.board:
-    #     query = query.filter(models.CourseAcademicEligibility.board.ilike(f"%{search.board}%"))
-    # if search.minimum:
-    #     query = query.filter(models.CourseAcademicEligibility.minimum == search.minimum)
-    # if search.remarks:
-    #     query = query.filter(models.CourseAcademicEligibility.remarks.ilike(f"%{search.remarks}%"))
-    # if search.university_name:
-    #     query = query.filter(models.CourseUniName.name.ilike(f"%{search.university_name}%"))
+        courses_res = search.course_name
+        response = []
+        # return (courses_res)
+        for courses in courses_res:
+            query=db.query(models.CourseName).filter(models.CourseName.course_name.ilike(f"%{courses}%")).all()
+            response.append(query)
+        return {'status': 200, 'data': [item for sublist in response for item in sublist], 'message': 'Success  '}
+    # [{"id": i["id"], "course_name": i["course_name"], "uni_name": i["uni_name"], "fees": i["fees"]} for j in response for i in j]
+    if search.university_name:
+        courses_res = search.university_name
+        response = []
+        # return (courses_res)
+        for courses in courses_res:
+            query=db.query(models.CourseName).filter(models.CourseName.uni_name.ilike(f"%{courses}%")).all()
+            response.append(query)
+        return {'status': 200, 'data': [item for sublist in response for item in sublist], 'message': 'Success  '}
+    if search.study_permit:
+        courses_res = search.study_permit
+        response = []
+        # return (courses_res)
+        for courses in courses_res:
+            query=db.query(models.CourseName).filter(models.CourseName.study_permit == courses).all()
+            response.append(query)
+        return {'status': 200, 'data': [item for sublist in response for item in sublist], 'message': 'Success  '}
 
-    results = query.all()
-    return {'status': 200,'data':results,'message': 'Success'}
+
+
 # Visa Granted
 @app.get("/visa/")
 async def get_visa_granted(db: Session = Depends(get_db)):
@@ -697,9 +692,6 @@ async def get_uni_drop(db: Session = Depends(get_db)):
         {"id": i + 1, "name": uni_name, "count": course_count}
         for i, (uni_name, course_count) in enumerate(permit_data)
     ]
-    # uni_nm_data = db.query(models.CourseName.course_name).distinct(models.CourseName.course_name).all()
-    # # print(uni_nm_data)
-    # course_list = [{"id": i + 1, "name": uni_name[0], "count": 0} for i, uni_name in enumerate(uni_nm_data)]
     uni_nm_data = (  # uni_data
         db.query(
             models.CourseName.course_name,
