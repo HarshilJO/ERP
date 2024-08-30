@@ -320,7 +320,7 @@ async def read_users(student: schemas.AgentWiseStudent, db: Session = Depends(ge
             for agent_name in agentWiseStudent:
                 for student in user_data:
                     if student.agent.replace(" ", "").lower() == agent_name:
-                        print(agent_name)
+                        # print(agent_name)
                         final_result_with_search.append(student)
 
             return {'status': 200, 'data': final_result_with_search, 'message': 'Success'}
@@ -398,7 +398,7 @@ async def create_or_update_user(user: schemas.User, request: Request, db: Sessio
     state_ids = get_statesids(data, country_name, state_name)
 
     # print(country_ids)
-    print(state_ids)
+
     phone_str = str(user.phone)
     # Validate phone number as a string
     a = re.fullmatch(r'[6-9][0-9]{9}', phone_str)
@@ -758,16 +758,49 @@ async def delete_application(id: int, db: Session = Depends(get_db)):
 def search_courses(search: schemas.CourseSearch, db: Session = Depends(get_db)):
     response = []
     conditions = []
+    final_query = []
     if search.global_search:
-        query = db.query(models.CourseName).filter(
-            models.CourseName.course_name.ilike(f"%{search.global_search}%")).all()
-        query2 = db.query(models.CourseName).filter(models.CourseName.uni_name.ilike(f"%{search.global_search}%")).all()
-        if query:
-            return {'status': 200, 'data': query, 'message': 'Success  '}
-        if query2:
-            return {'status': 200, 'data': query2, 'message': 'Success  '}
+        final_res = []
+        pattern = search.global_search.replace(" ", "").lower()
+        if search.course_name:
+            name_conditions = [models.CourseName.course_name.ilike(f"%{cname}%") for cname in search.course_name]
+            conditions.append(or_(*name_conditions))
+
+        if search.university_name:
+            uni_conditions = [models.CourseName.uni_name.ilike(f"%{uni}%") for uni in search.university_name]
+            conditions.append(or_(*uni_conditions))
+
+        if search.study_permit:
+            permit_conditions = [models.CourseName.study_permit == permit for permit in search.study_permit]
+            conditions.append(or_(*permit_conditions))
+
+        final_condition = and_(*conditions)
+
+        query = db.query(models.CourseName).filter(final_condition).all()
+
+        response.append(query)
+        final_query = [item for row in response for item in row]
+        if final_query:
+            for i in final_query:
+                course_name = i.course_name.replace(" ", "").lower()
+                uni_name = i.uni_name.replace(" ", "").lower()
+
+                # Use the sanitized pattern
+                if re.search(pattern, course_name, re.IGNORECASE) or re.search(pattern, uni_name, re.IGNORECASE):
+                    final_res.append(i)
+
+            return {'status': 200, 'data': final_res, 'message': 'Success  '}
         else:
-            return {'status': 200, 'data': [], 'message': 'not found'}
+            query = db.query(models.CourseName).filter(
+                models.CourseName.course_name.ilike(f"%{search.global_search}%")).all()
+            query2 = db.query(models.CourseName).filter(
+                models.CourseName.uni_name.ilike(f"%{search.global_search}%")).all()
+            if query:
+                return {'status': 200, 'data': query, 'message': 'Success  '}
+            if query2:
+                return {'status': 200, 'data': query2, 'message': 'Success  '}
+            else:
+                return {'status': 200, 'data': [], 'message': 'not found'}
 
     elif search.course_name or search.university_name or search.study_permit:
         if search.course_name:
@@ -795,6 +828,78 @@ def search_courses(search: schemas.CourseSearch, db: Session = Depends(get_db)):
         return {'status': 200, 'data': query, 'message': 'Success  '}
 
 
+@app.post("/search_courses")
+def search_courses(search: schemas.CourseSearch, db: Session = Depends(get_db)):
+    response = []
+    conditions = []
+    final_query = []
+    if search.global_search:
+        final_res = []
+        pattern = search.global_search.replace(" ", "").lower()
+        if search.course_name:
+            name_conditions = [models.CourseName.course_name.ilike(f"%{cname}%") for cname in search.course_name]
+            conditions.append(or_(*name_conditions))
+
+        if search.university_name:
+            uni_conditions = [models.CourseName.uni_name.ilike(f"%{uni}%") for uni in search.university_name]
+            conditions.append(or_(*uni_conditions))
+
+        if search.study_permit:
+            permit_conditions = [models.CourseName.study_permit == permit for permit in search.study_permit]
+            conditions.append(or_(*permit_conditions))
+
+        final_condition = and_(*conditions)
+
+        query = db.query(models.CourseName).filter(final_condition).all()
+
+        response.append(query)
+        final_query = [item for row in response for item in row]
+        if final_query:
+            for i in final_query:
+                course_name = i.course_name.replace(" ", "").lower()
+                uni_name = i.uni_name.replace(" ", "").lower()
+
+                # Use the sanitized pattern
+                if re.search(pattern, course_name, re.IGNORECASE) or re.search(pattern, uni_name, re.IGNORECASE):
+                    final_res.append(i)
+
+            return {'status': 200, 'data': final_res, 'message': 'Success  '}
+        else:
+            query = db.query(models.CourseName).filter(
+                models.CourseName.course_name.ilike(f"%{search.global_search}%")).all()
+            query2 = db.query(models.CourseName).filter(
+                models.CourseName.uni_name.ilike(f"%{search.global_search}%")).all()
+            if query:
+                return {'status': 200, 'data': query, 'message': 'Success  '}
+            if query2:
+                return {'status': 200, 'data': query2, 'message': 'Success  '}
+            else:
+                return {'status': 200, 'data': [], 'message': 'not found'}
+
+    elif search.course_name or search.university_name or search.study_permit:
+        if search.course_name:
+            name_conditions = [models.CourseName.course_name.ilike(f"%{cname}%") for cname in search.course_name]
+            conditions.append(or_(*name_conditions))
+
+        if search.university_name:
+            uni_conditions = [models.CourseName.uni_name.ilike(f"%{uni}%") for uni in search.university_name]
+            conditions.append(or_(*uni_conditions))
+
+        if search.study_permit:
+            permit_conditions = [models.CourseName.study_permit == permit for permit in search.study_permit]
+            conditions.append(or_(*permit_conditions))
+
+        final_condition = and_(*conditions)
+
+        query = db.query(models.CourseName).filter(final_condition).all()
+
+        response.append(query)
+
+        return {'status': 200, 'data': [item for row in response for item in row], 'message': 'Success  '}
+
+    else:
+        query = db.query(models.CourseName).all()
+        return {'status': 200, 'data': query, 'message': 'Success  '}
 # Visa Granted
 @app.get("/visa/")
 async def get_visa_granted(db: Session = Depends(get_db)):
@@ -920,54 +1025,101 @@ def model_to_dict(model):
 @app.post("/csv")
 async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_db)):
     agent_ids = student.agent_id
+    response = []
+    agentWiseStudent = []
     output = BytesIO()
-
+    agent_length=db.query(
+            func.count(models.agent_data.id)
+        ).all()
+    ag_length=agent_length[0][0]
     # Create a Pandas Excel writer using XlsxWriter as the engine
     writer = pd.ExcelWriter(output, engine='xlsxwriter')
 
     if agent_ids:
-        for id in agent_ids:
-            # Get agent name
-            agent_name = db.query(models.agent_data).filter(models.agent_data.id == id).first()
-            sheet_name = agent_name.name.replace(" ", "").lower()
+        if len(agent_ids) ==ag_length:
+        #     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        #         for id in agent_ids:
+        #             agent_name = db.query(models.agent_data).filter(models.agent_data.id == id).first()
+        #             agentWiseStudent.append(agent_name.name.replace(" ", "").lower())
+        #
+        #             # getting students with that agent
+        #             # for agent_name in agentWiseStudent:
+        #             students = db.query(
+        #                 models.User.name,
+        #                 models.User.email,
+        #                 models.User.phone,
+        #                 models.User.agent,
+        #                 models.User.address,
+        #                 models.User.city,
+        #                 models.User.state,
+        #                 models.User.country,
+        #                 models.User.passport
+        #             ).all()
+        #             matched_students = [student for student in students if
+        #                                 student.agent.replace(" ", "").lower() == agent_name]
+        #             response.extend(matched_students)  # Use extend instead of append to flatten the list
+        #
+        #         # Convert each row object to a dictionary
+        #     flat_data = [student._asdict() for student in response]
+        #
+        #         # Convert the data to a DataFrame
+        #     df = pd.DataFrame(flat_data)
+        #     df.index += 1
+        #
+        #     df.to_excel(writer, index=True)
+        #
+        #     # Ensure the buffer is set to the beginning of the stream
+        #     output.seek(0)
+        #
+        # # Send the response with the correct headers
+        #     return Response(
+        #         content=output.read(),
+        #         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        #         headers={"Content-Disposition": "attachment; filename=Madhavoverseas_Data.xlsx"}
+        #     )
+        # else:
+            for id in agent_ids:
+                # Get agent name
+                agent_name = db.query(models.agent_data).filter(models.agent_data.id == id).first()
+                sheet_name = agent_name.name.replace(" ", "").lower()
+                # print(agent_name.name)
+                # Query the students related to this agent
+                students = db.query(
+                    models.User.name,
+                    models.User.email,
+                    models.User.phone,
+                    models.User.agent,
+                    models.User.address,
+                    models.User.city,
+                    models.User.state,
+                    models.User.country,
+                    models.User.passport
+                ).all()
 
-            # Query the students related to this agent
-            students = db.query(
-                models.User.name,
-                models.User.email,
-                models.User.phone,
-                models.User.agent,
-                models.User.address,
-                models.User.city,
-                models.User.state,
-                models.User.country,
-                models.User.passport
-            ).all()
+                # Filter students by agent name
+                matched_students = [
+                    student for student in students if student.agent.replace(" ", "").lower() == sheet_name
+                ]
+                if  matched_students:
+                # Convert the data to a list of dictionaries
+                    flat_data = [student._asdict() for student in matched_students]
 
-            # Filter students by agent name
-            matched_students = [
-                student for student in students if student.agent.replace(" ", "").lower() == sheet_name
-            ]
+                    # Create a DataFrame for this agent's students
+                    df = pd.DataFrame(flat_data)
+                    df.index += 1
 
-            # Convert the data to a list of dictionaries
-            flat_data = [student._asdict() for student in matched_students]
-
-            # Create a DataFrame for this agent's students
-            df = pd.DataFrame(flat_data)
-            df.index += 1
-
-            # Write the DataFrame to a new sheet
-            df.to_excel(writer, sheet_name=sheet_name,index_label="Sr no.")
+                    # Write the DataFrame to a new sheet
+                    df.to_excel(writer, sheet_name=sheet_name,index_label="Sr no.")
 
 
-    writer.close()
+        writer.close()
 
-    # Ensure the buffer is set to the beginning of the stream
-    output.seek(0)
+        # Ensure the buffer is set to the beginning of the stream
+        output.seek(0)
 
-    # Send the response with the correct headers
-    return Response(
-        content=output.read(),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=Madhavoverseas_Data.xlsx"}
-    )
+        # Send the response with the correct headers
+        return Response(
+            content=output.read(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=Madhavoverseas_Data.xlsx"}
+        )

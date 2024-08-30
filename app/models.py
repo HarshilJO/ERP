@@ -102,13 +102,12 @@ class Logs(Base):
 class CourseAcademicEligibility(Base):
     __tablename__ = "course_academic_eligibility"
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    course_name_id = Column(Integer, ForeignKey('course_name.id'))
-    board = Column(String)
-    minimum = Column(Integer)
+    course_id = Column(Integer, ForeignKey('course_name.id'))
+    academics=Column(String)
     remarks = Column(String)
 
     # Specify foreign_keys to resolve ambiguity
-    course_name = relationship("CourseName", back_populates="academic_eligibilities", foreign_keys=[course_name_id])
+    course_name = relationship("CourseName", back_populates="academics", foreign_keys=[course_id])
 
 
 class CourseName(Base):
@@ -117,8 +116,10 @@ class CourseName(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     course_name = Column(String)
     uni_name = Column(String)  # Changed to Integer for consistency
-    academic_eligibilities = relationship("CourseAcademicEligibility", back_populates="course_name",foreign_keys=[CourseAcademicEligibility.course_name_id])
+    academics = relationship("CourseAcademicEligibility", back_populates="course_name",foreign_keys=[CourseAcademicEligibility.course_id])
     fees=Column(String)
     scholarship=Column(String)
     study_permit=Column(Integer)
+    ielts = Column(String)
+    pte = Column(String)
 
