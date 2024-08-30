@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request, Query
+from fastapi import FastAPI, Depends, HTTPException, status, Request, Query,Response
 from app import models, schemas
 from app.database import engine, SessionLocal
 from sqlalchemy.orm import Session
@@ -10,10 +10,13 @@ from typing import List, Optional
 import json
 import jwt
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 import logging
+import openpyxl
 from datetime import datetime, timedelta
 import pandas as pd
-
+import pytz
+from io import BytesIO
 app = FastAPI()
 
 # Configure logging
@@ -48,9 +51,10 @@ def get_db():
 
 
 def get_time():
-    now = datetime.now()
-    formatted_now = now.strftime("%Y-%m-%d %H:%M:%S")
-    return formatted_now
+    original_tz = pytz.timezone('Asia/Kolkata')
+    datetime_object = datetime.now(original_tz)
+    current_time = datetime_object.strftime('%Y-%m-%d %H:%M:%S')
+    return current_time
 
 
 # <----Validations---->
@@ -85,6 +89,28 @@ statuses = [
 ]
 
 
+async def get_role_from_token(request: Request):
+    headers = dict(request.headers)
+    token_with_bearer = headers.get("authorization")
+    if not token_with_bearer:
+        data = {'message': "Not Found",
+                'data': "Not found"}
+        return JSONResponse(
+            status_code=404,
+            content=data
+        )
+    final_token = token_with_bearer.replace("Bearer ", "")
+    payload = jwt.decode(final_token, options={"verify_signature": False})
+    role_name = payload.get("Role")
+    if not role_name:
+        data = {'message': "Not Found",
+                'data': "Not found"}
+        return JSONResponse(
+            status_code=404,
+            content=data
+        )
+
+    return role_name
 # Address details
 def load_json(filename):
     with open(filename, 'r', encoding='utf-8') as file:
@@ -264,24 +290,56 @@ async def Dashboard(db: Session = Depends(get_db)):
 
 # </----Dashboard----/>
 
+class AgentWiseStudent(BaseModel):
+    agent_id:Optional[List[int]]=None
 
-@app.get("/users/")
-async def read_users(name: Optional[str] = Query(None), db: Session = Depends(get_db)):
-    student_info = []
-    states_nam = []
-    if name:
-        user_data = db.query(models.User).filter(models.User.name.ilike(f"%{name}%")).all()
-        if not user_data:
-            return {'status': 200, 'data': [], 'message': 'Success'}
-        else:
-            return {'status': 200, 'data': user_data, 'message': 'Success'}
+
+@app.post("/student")
+async def read_users(student: schemas.AgentWiseStudent, db: Session = Depends(get_db)):
+    agentWiseStudent = []
+    response = []
+    final_result_with_search = []
+    name = student.name
+
+    agent_ids = student.agent_id
+    if student.agent_id:
+        for id in agent_ids:
+            agent_name = db.query(models.agent_data).filter(models.agent_data.id == id).all()
+            agentWiseStudent.append(agent_name[0].name.replace(" ", "").lower())
+            # print(agentWiseStudent)
+
+        # getting students with that agent
+        for agent_name in agentWiseStudent:
+            students = db.query(models.User).all()
+            matched_students = [student for student in students if student.agent.replace(" ", "").lower() == agent_name]
+            response.append(matched_students)
+
+        if student.agent_id and name:
+            user_data = db.query(models.User).filter(models.User.name.ilike(f"%{name}%")).all()
+
+            for agent_name in agentWiseStudent:
+                for student in user_data:
+                    if student.agent.replace(" ", "").lower() == agent_name:
+                        print(agent_name)
+                        final_result_with_search.append(student)
+
+            return {'status': 200, 'data': final_result_with_search, 'message': 'Success'}
+
+        return {'status': 200, 'data': [item for row in response for item in row], 'message': 'Success'}
     else:
-        user_data = db.query(models.User).all()
-        student_info.extend(user_data)
+        student_info = []
 
-    return {'status': 200, 'data': student_info, 'message': 'Success'}
+        if name:
+            user_data = db.query(models.User).filter(models.User.name.ilike(f"%{name}%")).all()
+            if not user_data:
+                return {'status': 200, 'data': [], 'message': 'Success'}
+            else:
+                return {'status': 200, 'data': user_data, 'message': 'Success'}
 
-
+        else:
+            user_data = db.query(models.User).all()
+            student_info.extend(user_data)
+            return {'status': 200, 'data': student_info, 'message': 'Success'}
 @app.get("/user_name")
 async def user_name(db: Session = Depends(get_db)):
     agent_names = db.query(models.User.id, models.User.name).all()
@@ -303,28 +361,6 @@ async def get_user(id: int, db: Session = Depends(get_db)):
 
 
 # User creation or update endpoint
-async def get_role_from_token(request: Request):
-    headers = dict(request.headers)
-    token_with_bearer = headers.get("authorization")
-    if not token_with_bearer:
-        data = {'message': "Not Found",
-                'data': "Not found"}
-        return JSONResponse(
-            status_code=404,
-            content=data
-        )
-    final_token = token_with_bearer.replace("Bearer ", "")
-    payload = jwt.decode(final_token, options={"verify_signature": False})
-    role_name = payload.get("Role")
-    if not role_name:
-        data = {'message': "Not Found",
-                'data': "Not found"}
-        return JSONResponse(
-            status_code=404,
-            content=data
-        )
-
-    return role_name
 
 
 # Log apply
@@ -453,11 +489,11 @@ def get_stateids(country_data, state_names):
 async def get_all_agent(query: schemas.ApplicationQuery, db: Session = Depends(get_db)):
     agent_info = []
     if query.name:
-                agents = db.query(models.agent_data).filter(models.agent_data.name.ilike(f"%{query.name}%")).all()
-                if not agents:
-                    return {'status': 200, 'data': [], 'message': 'Agent not found'}
-                else:
-                    return {'status': 200, 'data': agents, 'message': 'Agent found'}
+        agents = db.query(models.agent_data).filter(models.agent_data.name.ilike(f"%{query.name}%")).all()
+        if not agents:
+            return {'status': 200, 'data': [], 'message': 'Agent not found'}
+        else:
+            return {'status': 200, 'data': agents, 'message': 'Agent found'}
     else:
         agents = db.query(models.agent_data).all()
         agent_info.extend(agents)
@@ -537,8 +573,10 @@ async def delete_agent(id: int, db: Session = Depends(get_db)):
 # <----Applications---->
 uni_data = load_json('address/universities.json')
 
+
 class UniversityRequest(BaseModel):
     uni_name: str
+
 
 @app.post("/universities")
 async def get_states(request: UniversityRequest):
@@ -567,6 +605,20 @@ async def get_states(request: UniversityRequest):
             'data': [],
             'message': 'No Universities Found in this Country'
         }
+@app.post("/add_uni")
+async def add_uni(data:schemas.AddUni):
+    if data.university_name.lower() not in [i["name"].lower() for i in uni_data]:
+        data_to_add = {"name": data.university_name, "country": data.Country}
+        uni_data.append(data_to_add)
+        with open('address/universities.json', 'w') as file:
+            json.dump(uni_data, file, indent=4)
+        return {'status':200,'data':'Successfully Added','message':'Successfully Added'}
+    data_res = {'message': 'University is already Present in List',
+            'data': "Already Exist"}
+    return JSONResponse(
+        status_code=409,
+        content=data_res
+    )
 
 
 # Get all applications
@@ -581,37 +633,6 @@ async def get_user(id: int, db: Session = Depends(get_db)):
             content=data
         )
     return {'status': 200, 'data': user, 'message': 'Success'}
-
-
-# @app.get("/application")
-# async def get_all_applications(name: Optional[str] = Query(None), ids: Optional[List[int]] = Query(default=None),db: Session = Depends(get_db)):
-#     if ids and name:
-#         final_result=[]
-#         for id in ids:
-#             for j in statuses:
-#                 if id == j["id"]:
-#                   final_result.append(db.query(models.Application).filter(models.Application.status == j["label"] and models.Application.student_name.ilike(f"%{name}%") ).all())
-
-#         return {'status': 200, 'data': final_result, 'message': 'Application not found'}
-#     if ids:
-#         final_result=[]
-
-#         for id in ids:
-#             for j in statuses:
-#                 if id == j["id"]:
-#                   final_result.append(db.query(models.Application).filter(models.Application.status == j["label"] ).all())
-
-#         return {'status': 200, 'data': final_result, 'message': 'Application not found'}
-
-
-#     if name:
-#         agents = db.query(models.Application).filter(models.Application.student_name.ilike(f"%{name}%") ).all()
-#         if not agents:
-#             return {'status': 200, 'data': [], 'message': 'Application not found'}
-#     else:
-#         agents = db.query(models.Application).all()
-#     return {'status': 200, 'data': agents, 'message': 'Success'}
-
 
 @app.post("/application_get")
 async def get_all_applications(query: schemas.ApplicationQuery, db: Session = Depends(get_db)):
@@ -691,9 +712,6 @@ async def CU_Applications(application: schemas.Application, request: Request, db
             # Create new application without an id
             new_application = models.Application(**application.dict(exclude={"id"}))
 
-
-
-
             new_application.status = "Application Created"
             # Set the student_name from the User table
             new_application.student_name = user.name
@@ -740,7 +758,18 @@ async def delete_application(id: int, db: Session = Depends(get_db)):
 def search_courses(search: schemas.CourseSearch, db: Session = Depends(get_db)):
     response = []
     conditions = []
-    if search.course_name or search.university_name or search.study_permit:
+    if search.global_search:
+        query = db.query(models.CourseName).filter(
+            models.CourseName.course_name.ilike(f"%{search.global_search}%")).all()
+        query2 = db.query(models.CourseName).filter(models.CourseName.uni_name.ilike(f"%{search.global_search}%")).all()
+        if query:
+            return {'status': 200, 'data': query, 'message': 'Success  '}
+        if query2:
+            return {'status': 200, 'data': query2, 'message': 'Success  '}
+        else:
+            return {'status': 200, 'data': [], 'message': 'not found'}
+
+    elif search.course_name or search.university_name or search.study_permit:
         if search.course_name:
             name_conditions = [models.CourseName.course_name.ilike(f"%{cname}%") for cname in search.course_name]
             conditions.append(or_(*name_conditions))
@@ -760,6 +789,7 @@ def search_courses(search: schemas.CourseSearch, db: Session = Depends(get_db)):
         response.append(query)
 
         return {'status': 200, 'data': [item for row in response for item in row], 'message': 'Success  '}
+
     else:
         query = db.query(models.CourseName).all()
         return {'status': 200, 'data': query, 'message': 'Success  '}
@@ -773,6 +803,7 @@ async def get_visa_granted(db: Session = Depends(get_db)):
             students1 = db.query(models.Application).filter(models.Application.status == i["label"]).order_by(
                 desc(models.Application.id)).all()
     return {'status': 200, 'data': students1, 'message': 'Success all '}
+
 
 
 @app.get("/get_uni")
@@ -817,3 +848,126 @@ async def get_uni_drop(db: Session = Depends(get_db)):
     ]
     return {'status': 200, 'data': {"uni_data": agents_list, "permit_data": permit_list, "course_data": course_list},
             'message': 'Success'}
+
+#
+# @app.post("/csv")
+# async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_db)):
+#     agentWiseStudent = []
+#     response = []
+#     final_result_with_search = []
+#     name = student.name
+#
+#     agent_ids = student.agent_id
+#     if student.agent_id:
+#         for id in agent_ids:
+#             agent_name = db.query(models.agent_data).filter(models.agent_data.id == id).all()
+#             agentWiseStudent.append(agent_name[0].name.replace(" ", "").lower())
+#             # print(agentWiseStudent)
+#
+#         # getting students with that agent
+#         for agent_name in agentWiseStudent:
+#             students = db.query(models.User).all()
+#             matched_students = [student for student in students if
+#                                 student.agent.replace(" ", "").lower() == agent_name]
+#             response.append(matched_students)
+#
+#     flat_data = [item for sublist in response for item in sublist]
+#
+#     # Convert the data to a DataFrame
+#     df = pd.DataFrame(flat_data)
+#
+#     # Use BytesIO as an in-memory buffer
+#     output = BytesIO()
+#
+#     # Create a Pandas Excel writer using XlsxWriter as the engine
+#     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+#         df.to_excel(writer, sheet_name='Agent_name', index=False)
+#
+#     # Ensure the buffer is set to the beginning of the stream
+#     output.seek(0)
+#
+#     # Send the response with the correct headers
+#     return Response(
+#         content=output.read(),
+#         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+#         headers={"Content-Disposition": "attachment; filename=Madhavoverseas_Data.xlsx"}
+#     )
+#     # df = pd.DataFrame({'Data': [10, 20, 30, 20, 15, 30, 45]})
+#     #
+#     # # Use BytesIO as an in-memory buffer
+#     # output = BytesIO()
+#     #
+#     # # Create a Pandas Excel writer using XlsxWriter as the engine
+#     # with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+#     #     df.to_excel(writer, sheet_name='Agent_name')
+#     #
+#     # # Ensure the buffer is set to the beginning of the stream
+#     # output.seek(0)
+#     #
+#     # # Send the response with the correct headers
+#     # return Response(
+#     #     content=output.read(),
+#     #     media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+#     #     headers={"Content-Disposition": "attachment; filename=Madhavoverseaas_Data.xlsx"}
+#     # )
+def model_to_dict(model):
+    """
+    Convert SQLAlchemy model instance to a dictionary.
+    """
+    return {column.name: getattr(model, column.name) for column in model.__table__.columns}
+
+
+@app.post("/csv")
+async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_db)):
+    agent_ids = student.agent_id
+    output = BytesIO()
+
+    # Create a Pandas Excel writer using XlsxWriter as the engine
+    writer = pd.ExcelWriter(output, engine='xlsxwriter')
+
+    if agent_ids:
+        for id in agent_ids:
+            # Get agent name
+            agent_name = db.query(models.agent_data).filter(models.agent_data.id == id).first()
+            sheet_name = agent_name.name.replace(" ", "").lower()
+
+            # Query the students related to this agent
+            students = db.query(
+                models.User.name,
+                models.User.email,
+                models.User.phone,
+                models.User.agent,
+                models.User.address,
+                models.User.city,
+                models.User.state,
+                models.User.country,
+                models.User.passport
+            ).all()
+
+            # Filter students by agent name
+            matched_students = [
+                student for student in students if student.agent.replace(" ", "").lower() == sheet_name
+            ]
+
+            # Convert the data to a list of dictionaries
+            flat_data = [student._asdict() for student in matched_students]
+
+            # Create a DataFrame for this agent's students
+            df = pd.DataFrame(flat_data)
+            df.index += 1
+
+            # Write the DataFrame to a new sheet
+            df.to_excel(writer, sheet_name=sheet_name,index_label="Sr no.")
+
+
+    writer.close()
+
+    # Ensure the buffer is set to the beginning of the stream
+    output.seek(0)
+
+    # Send the response with the correct headers
+    return Response(
+        content=output.read(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=Madhavoverseas_Data.xlsx"}
+    )

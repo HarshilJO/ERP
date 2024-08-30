@@ -90,6 +90,7 @@ class ApplicationQuery(BaseModel):
     ids: Optional[List[int]] = None
 
 class CourseSearch(BaseModel):
+    global_search:Optional[str] = None
     course_name: Optional[List[str]] = None
     board: Optional[str] = None
     minimum: Optional[int] = None
@@ -98,3 +99,15 @@ class CourseSearch(BaseModel):
     fees:Optional[str]=None
     scholarship:Optional[str]=None
     study_permit:Optional[List[int]]=None
+
+
+class AddUni(BaseModel):
+    Country:str
+    university_name:str
+class csv(BaseModel):
+    Agent_list:Optional[List[int]]=None
+    Application_list:Optional[List[int]]
+
+class AgentWiseStudent(BaseModel):
+    agent_id:Optional[List[int]] = None
+    name:Optional[str]=Field(None)
