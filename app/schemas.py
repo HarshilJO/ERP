@@ -35,6 +35,9 @@ class Application(BaseModel):
     intake: str
     program:str
     program_level: str
+    yearly_fee: Optional[str] = Field(None)
+    scholarship: Optional[str] = Field(None)
+    curr: Optional[str] = Field(None)
     
 class DropdownOptionBase(BaseModel):
     id: int
@@ -67,6 +70,7 @@ class AgentSchema(BaseModel):
     con_per_name:str
     con_per_phone:int
     con_per_pos:str
+    commission:Optional[str]=Field(None)
    
 class Credentials(BaseModel):
     id: Optional[int] = Field(None)
@@ -111,3 +115,9 @@ class csv(BaseModel):
 class AgentWiseStudent(BaseModel):
     agent_id:Optional[List[int]] = None
     name:Optional[str]=Field(None)
+
+
+class commission_get(BaseModel):
+    Agent_list: Optional[List[int]] = None
+    application_list:Optional[List[int]]=None
+    pay_recieve:Optional[int]=None

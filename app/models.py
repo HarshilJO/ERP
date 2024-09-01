@@ -43,8 +43,31 @@ class Application(Base):
     program = Column(String)
     status = Column(String)
     timestamp=Column(String)
+    curr=Column(String)
+    yearly_fee=Column(String)
+    scholarship=Column(String)
     user = relationship("User", back_populates="applications")
+    # commission=relationship("commission",back_populates="application")
 
+class commission(Base):
+    __tablename__="commission"
+    id=Column(Integer,primary_key=True,index=True)
+    Student_name=Column(String)
+    application_id=Column(Integer,ForeignKey('application.id'))
+    agent_id=Column(Integer)
+    agent=Column(String)
+    currency=Column(String)
+    yearly_fee=Column(String)
+    scholarship=Column(String)
+    pay_fee=Column(String)
+    charges=Column(String)
+    tds=Column(String)
+    gst=Column(String)
+    #this is nothing
+    gain_commission=Column(String)
+    final_amount=Column(Integer)
+    pay_recieve=Column(Integer)
+    # application = relationship("Application", back_populates="commision")
 class DocsDropdown(Base):
     __tablename__ = "docs_dropdown"
     id = Column(Integer, primary_key=True, index=True)
@@ -67,6 +90,7 @@ class agent_data(Base):
     con_per_name = Column(String)
     con_per_phone = Column(String)
     con_per_pos =Column(Integer)
+    commission=Column(Integer)
 
 class Credentials(Base):
     __tablename__ = 'credentials'
@@ -83,22 +107,6 @@ class Logs(Base):
     timestamp = Column(String)
     details = Column(String)
 
-# class CourseAcademicEligibility(Base):
-#     __tablename__ = "course_academic_eligibility"
-#     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-#     course_name_id = Column(Integer, ForeignKey('course_name.id'))
-#     board = Column(String)
-#     minimum = Column(Integer)
-#     remarks = Column(String)
-#     course_name = relationship("CourseName",back_populates="academic_eligibilities")
-# class CourseName(Base):
-#     __tablename__ = "course_name"
-#
-#     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-#     name = Column(String)
-#     uni_name_id = Column(String)
-#     academic_eligibility_id = Column(Integer, ForeignKey('course_academic_eligibility.id'))
-#     academic_eligibilities = relationship("CourseAcademicEligibility",back_populates="course_name")
 class CourseAcademicEligibility(Base):
     __tablename__ = "course_academic_eligibility"
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)

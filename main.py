@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request, Query,Response
+from fastapi import FastAPI, Depends, HTTPException, status, Request, Query, Response
 from app import models, schemas
 from app.database import engine, SessionLocal
 from sqlalchemy.orm import Session
@@ -12,11 +12,14 @@ import jwt
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import logging
+import requests
 import openpyxl
+# import xlswriter
 from datetime import datetime, timedelta
 import pandas as pd
 import pytz
 from io import BytesIO
+
 app = FastAPI()
 
 # Configure logging
@@ -57,6 +60,13 @@ def get_time():
     return current_time
 
 
+async def currency(curr):
+    # created by Harshil on 1-09
+    url = "https://api.exchangerate-api.com/v4/latest/"
+    response = requests.get(url + f"{curr}")
+    res = response.json()
+    indian_val = res['rates'].get('INR', None)
+    return indian_val
 # <----Validations---->
 NAME_REGEX = re.compile(r"^[a-zA-Z_]+(?: [a-zA-Z_]+)*$")
 EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
@@ -111,6 +121,8 @@ async def get_role_from_token(request: Request):
         )
 
     return role_name
+
+
 # Address details
 def load_json(filename):
     with open(filename, 'r', encoding='utf-8') as file:
@@ -125,6 +137,15 @@ async def get_countries():
     return {'status': 200, 'data': [{"id": country["id"], "name": country["name"]} for country in data],
             'message': 'Success'}
 
+async def country_curr(Country:str):
+
+    for country in data:
+
+        if country["name"]==Country:
+            return country["currency"]
+            break
+    else:
+        return 0
 
 @app.get("/countries/{country_id}/states")
 async def get_states(country_id: int):
@@ -175,72 +196,126 @@ async def application_status():
 
 @app.post("/application_status_update")
 async def app_status_update(app_status: schemas.application_status, db: Session = Depends(get_db)):
+
     db_user = db.query(models.Application).filter(models.Application.id == app_status.id).first()
+    # print(name[0].student_name)
+    if app_status.name == "Visa Granted":
+        app_data = []
+        app_data.append(db_user)
+
+        db_agent = db.query(models.User.agent).filter(models.User.id == app_data[0].student_id).first()
+        app_data.append(db_agent)
+        appli = app_data[0].id
+        student=app_data[0].student_name
+        agents =app_data[1].agent
+        db_agent_id=db.query(models.agent_data.id).filter(models.agent_data.name == agents).first()
+        app_data.append(db_agent_id)
+        agent_id=app_data[2].id
+        curr=app_data[0].curr
+        yearly_fee=app_data[0].yearly_fee
+        scholarship=app_data[0].scholarship
+        fee_paying= str(round(float(float(yearly_fee) - ((float(yearly_fee)/100)*float(scholarship)))))
+        charges="53"
+        tds="15"
+        gst="0"
+        gain_commission = '10'
+        final_amount =round(float(fee_paying),2)
+        db_commission=models.commission(
+            application_id=appli,
+            Student_name=student,
+            agent_id=agent_id,
+            agent=agents,
+            currency=curr,
+            yearly_fee=yearly_fee,
+            scholarship=scholarship,
+            pay_fee=fee_paying,
+            charges=charges,
+            tds=tds,
+            gst=gst,
+            gain_commission=gain_commission,
+            final_amount=final_amount,
+            pay_recieve=0
+
+        )
+        db.add(db_commission)
+        db_user.status = app_status.name
+        db.commit()
+        db.refresh(db_commission)
+        db.refresh(db_user)
+        return {"response": 200, "data": 'Application Status Updated', "message": "Application Status Updated"}
+    else:
+        current_data = []
+        current_data.append(db_user)
+
+        db_agent = db.query(models.commission).filter(models.commission.application_id == current_data[0].id).first()
+        if db_agent:
+            db.delete(db_agent)
+
+
     db_user.status = app_status.name
     db.commit()
     db.refresh(db_user)
     return {"response": 200, "data": 'Application Status Updated', "message": "Application Status Updated"}
 
-
-# <----Login---->
 def create_access_token(data: dict):
-    to_encode = data.copy()
-    SECRET_KEY = "09d25e094faa****************f7099f6f0f4caa6cf63b88e8d3e7"
+    try:
+        to_encode = data.copy()
+        SECRET_KEY = "09d25e094faa****************f7099f6f0f4caa6cf63b88e8d3e7"
 
-    # encryption algorithm
-    ALGORITHM = "HS256"
-    # expire time of the token
-    expire = datetime.utcnow() + timedelta(minutes=3650)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+        # encryption algorithm
+        ALGORITHM = "HS256"
+        # expire time of the token - set to 100 years
+        expire = datetime.utcnow() + timedelta(days=365 * 100)
+        to_encode.update({"exp": expire})
+        encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-    # return the generated token
-    return encoded_jwt
+        # return the generated token
+        return encoded_jwt
+    except Exception as e:
+        logger.error("Error creating access token: %s", e)
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
+# Login route
 @app.post("/login")
 def login(user: schemas.Credentials, db: Session = Depends(get_db)):
-    db_user = db.query(models.Credentials).filter(models.Credentials.email == user.email).first()
-    if db_user:
-        if db_user.password == user.password:
-            if db_user.is_admin:
-                position = 'Admin'
-            else:
-                position = 'Employee'
-            data = {
-                'Role': position,
-                'email': user.email
-            }
-            token = create_access_token(data=data)
-            content = {'message': "Login Successfull",
-                       'data': json.loads(json.dumps(({"role": position, "email": user.email, "token": token})))
+    try:
+        db_user = db.query(models.Credentials).filter(models.Credentials.email == user.email).first()
+        if db_user:
+            if db_user.password == user.password:
+                position = 'Admin' if db_user.is_admin else 'Employee'
+                data = {
+                    'Role': position,
+                    'email': user.email
+                }
+                token = create_access_token(data=data)
+                content = {'message': "Login Successful",
+                           'data': {"role": position, "email": user.email, "token": token}}
 
-                       }
+                response = JSONResponse(
+                    status_code=200,
+                    content=content
+                )
+                response.headers["Authorization"] = f"Bearer {token}"
+                return response
 
-            response = JSONResponse(
-                status_code=200,
-                content=content
-            )
-            response.headers["Authorization"] = f"Bearer {token}"
-            return response
-
-        # elif  db_user.password != user.password:
-        #         # new_dic={'message':'Incorrect Password or Username','data':'Incorrect Password or Username'}
-        #         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Incorrect Password" ,message='Incorrect Password',data='Incorrect Password or username')
-        elif db_user.password != user.password:
+            elif db_user.password != user.password:
+                data = {'message': "Incorrect username or password",
+                        'data': "Incorrect username or password"}
+                return JSONResponse(
+                    status_code=404,
+                    content=data
+                )
+        else:
             data = {'message': "Incorrect username or password",
                     'data': "Incorrect username or password"}
             return JSONResponse(
                 status_code=404,
                 content=data
             )
-    else:
-        data = {'message': "Incorrect username or password",
-                'data': "Incorrect username or password"}
-        return JSONResponse(
-            status_code=404,
-            content=data
-        )
+    except Exception as e:
+        logger.error("Error during login: %s", e)
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 # </----Login----/>
@@ -291,7 +366,7 @@ async def Dashboard(db: Session = Depends(get_db)):
 # </----Dashboard----/>
 
 class AgentWiseStudent(BaseModel):
-    agent_id:Optional[List[int]]=None
+    agent_id: Optional[List[int]] = None
 
 
 @app.post("/student")
@@ -340,6 +415,8 @@ async def read_users(student: schemas.AgentWiseStudent, db: Session = Depends(ge
             user_data = db.query(models.User).all()
             student_info.extend(user_data)
             return {'status': 200, 'data': student_info, 'message': 'Success'}
+
+
 @app.get("/user_name")
 async def user_name(db: Session = Depends(get_db)):
     agent_names = db.query(models.User.id, models.User.name).all()
@@ -446,7 +523,7 @@ async def create_or_update_user(user: schemas.User, request: Request, db: Sessio
     db.add(new_log)
     db.commit()
     db.refresh(new_log)
-    return {'status': 200, 'message': 'Success'}
+    return {'status': 200, 'data':'Success','message': 'Successfully Created'}
 
 
 @app.delete("/users/{user_id}")
@@ -605,16 +682,18 @@ async def get_states(request: UniversityRequest):
             'data': [],
             'message': 'No Universities Found in this Country'
         }
+
+
 @app.post("/add_uni")
-async def add_uni(data:schemas.AddUni):
+async def add_uni(data: schemas.AddUni):
     if data.university_name.lower() not in [i["name"].lower() for i in uni_data]:
         data_to_add = {"name": data.university_name, "country": data.Country}
         uni_data.append(data_to_add)
         with open('address/universities.json', 'w') as file:
             json.dump(uni_data, file, indent=4)
-        return {'status':200,'data':'Successfully Added','message':'Successfully Added'}
+        return {'status': 200, 'data': 'Successfully Added', 'message': 'Successfully Added'}
     data_res = {'message': 'University is already Present in List',
-            'data': "Already Exist"}
+                'data': "Already Exist"}
     return JSONResponse(
         status_code=409,
         content=data_res
@@ -633,6 +712,7 @@ async def get_user(id: int, db: Session = Depends(get_db)):
             content=data
         )
     return {'status': 200, 'data': user, 'message': 'Success'}
+
 
 @app.post("/application_get")
 async def get_all_applications(query: schemas.ApplicationQuery, db: Session = Depends(get_db)):
@@ -670,14 +750,9 @@ async def get_all_applications(query: schemas.ApplicationQuery, db: Session = De
 
 @app.post("/application")
 async def CU_Applications(application: schemas.Application, request: Request, db: Session = Depends(get_db)):
+    curr =await country_curr(application.Country)
     role_name = await get_role_from_token(request)
     user = db.query(models.User).filter(models.User.id == application.student_id).first()
-    if application.university_name not in [i["name"] for i in uni_data]:
-        data_to_add = {"name": application.university_name, "country": application.Country}
-        uni_data.append(data_to_add)
-        with open('address/universities.json', 'w') as file:
-            json.dump(uni_data, file, indent=4)
-
     if user:
         rent_time = datetime.utcnow()
         current_time = rent_time.strftime('%Y-%m-%d %H:%M:%S')
@@ -691,9 +766,14 @@ async def CU_Applications(application: schemas.Application, request: Request, db
                     operation="Created",
                     timestamp=get_time(),
                     details=f"New Application Created for <b>{user.name}</b> by <b>{role_name}</b>")
-                db.add(new_log)
 
-                # Set the student_name from the User table
+                db.add(new_log)
+                #updated by Harshil on 1-09
+                db_application.curr = curr
+                db_application.yearly_fee=application.yearly_fee
+                db_application.scholarship=application.scholarship
+                # end updated by Harshil on 1-09
+
                 db_application.student_name = user.name
                 db_application.timestamp = current_time
                 db.commit()
@@ -714,6 +794,11 @@ async def CU_Applications(application: schemas.Application, request: Request, db
 
             new_application.status = "Application Created"
             # Set the student_name from the User table
+            # updated by Harshil on 1-09
+            new_application.curr = curr
+            new_application.yearly_fee = application.yearly_fee
+            new_application.scholarship = application.scholarship
+            # end updated by Harshil on 1-09
             new_application.student_name = user.name
             new_application.timestamp = current_time
             db.add(new_application)
@@ -900,6 +985,8 @@ def search_courses(search: schemas.CourseSearch, db: Session = Depends(get_db)):
     else:
         query = db.query(models.CourseName).all()
         return {'status': 200, 'data': query, 'message': 'Success  '}
+
+
 # Visa Granted
 @app.get("/visa/")
 async def get_visa_granted(db: Session = Depends(get_db)):
@@ -908,7 +995,6 @@ async def get_visa_granted(db: Session = Depends(get_db)):
             students1 = db.query(models.Application).filter(models.Application.status == i["label"]).order_by(
                 desc(models.Application.id)).all()
     return {'status': 200, 'data': students1, 'message': 'Success all '}
-
 
 
 @app.get("/get_uni")
@@ -954,136 +1040,27 @@ async def get_uni_drop(db: Session = Depends(get_db)):
     return {'status': 200, 'data': {"uni_data": agents_list, "permit_data": permit_list, "course_data": course_list},
             'message': 'Success'}
 
-#
-# @app.post("/csv")
-# async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_db)):
-#     agentWiseStudent = []
-#     response = []
-#     final_result_with_search = []
-#     name = student.name
-#
-#     agent_ids = student.agent_id
-#     if student.agent_id:
-#         for id in agent_ids:
-#             agent_name = db.query(models.agent_data).filter(models.agent_data.id == id).all()
-#             agentWiseStudent.append(agent_name[0].name.replace(" ", "").lower())
-#             # print(agentWiseStudent)
-#
-#         # getting students with that agent
-#         for agent_name in agentWiseStudent:
-#             students = db.query(models.User).all()
-#             matched_students = [student for student in students if
-#                                 student.agent.replace(" ", "").lower() == agent_name]
-#             response.append(matched_students)
-#
-#     flat_data = [item for sublist in response for item in sublist]
-#
-#     # Convert the data to a DataFrame
-#     df = pd.DataFrame(flat_data)
-#
-#     # Use BytesIO as an in-memory buffer
-#     output = BytesIO()
-#
-#     # Create a Pandas Excel writer using XlsxWriter as the engine
-#     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-#         df.to_excel(writer, sheet_name='Agent_name', index=False)
-#
-#     # Ensure the buffer is set to the beginning of the stream
-#     output.seek(0)
-#
-#     # Send the response with the correct headers
-#     return Response(
-#         content=output.read(),
-#         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-#         headers={"Content-Disposition": "attachment; filename=Madhavoverseas_Data.xlsx"}
-#     )
-#     # df = pd.DataFrame({'Data': [10, 20, 30, 20, 15, 30, 45]})
-#     #
-#     # # Use BytesIO as an in-memory buffer
-#     # output = BytesIO()
-#     #
-#     # # Create a Pandas Excel writer using XlsxWriter as the engine
-#     # with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-#     #     df.to_excel(writer, sheet_name='Agent_name')
-#     #
-#     # # Ensure the buffer is set to the beginning of the stream
-#     # output.seek(0)
-#     #
-#     # # Send the response with the correct headers
-#     # return Response(
-#     #     content=output.read(),
-#     #     media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-#     #     headers={"Content-Disposition": "attachment; filename=Madhavoverseaas_Data.xlsx"}
-#     # )
-def model_to_dict(model):
-    """
-    Convert SQLAlchemy model instance to a dictionary.
-    """
-    return {column.name: getattr(model, column.name) for column in model.__table__.columns}
-
 
 @app.post("/csv")
 async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_db)):
-    agent_ids = student.agent_id
-    response = []
-    agentWiseStudent = []
-    output = BytesIO()
-    agent_length=db.query(
-            func.count(models.agent_data.id)
-        ).all()
-    ag_length=agent_length[0][0]
-    # Create a Pandas Excel writer using XlsxWriter as the engine
-    writer = pd.ExcelWriter(output, engine='xlsxwriter')
+    try:
+        agent_ids = student.agent_id
+        output = BytesIO()
+        logging.info(f"Agent IDs received: {agent_ids}")
 
-    if agent_ids:
-        if len(agent_ids) ==ag_length:
-        #     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        #         for id in agent_ids:
-        #             agent_name = db.query(models.agent_data).filter(models.agent_data.id == id).first()
-        #             agentWiseStudent.append(agent_name.name.replace(" ", "").lower())
-        #
-        #             # getting students with that agent
-        #             # for agent_name in agentWiseStudent:
-        #             students = db.query(
-        #                 models.User.name,
-        #                 models.User.email,
-        #                 models.User.phone,
-        #                 models.User.agent,
-        #                 models.User.address,
-        #                 models.User.city,
-        #                 models.User.state,
-        #                 models.User.country,
-        #                 models.User.passport
-        #             ).all()
-        #             matched_students = [student for student in students if
-        #                                 student.agent.replace(" ", "").lower() == agent_name]
-        #             response.extend(matched_students)  # Use extend instead of append to flatten the list
-        #
-        #         # Convert each row object to a dictionary
-        #     flat_data = [student._asdict() for student in response]
-        #
-        #         # Convert the data to a DataFrame
-        #     df = pd.DataFrame(flat_data)
-        #     df.index += 1
-        #
-        #     df.to_excel(writer, index=True)
-        #
-        #     # Ensure the buffer is set to the beginning of the stream
-        #     output.seek(0)
-        #
-        # # Send the response with the correct headers
-        #     return Response(
-        #         content=output.read(),
-        #         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        #         headers={"Content-Disposition": "attachment; filename=Madhavoverseas_Data.xlsx"}
-        #     )
-        # else:
+        # Create a Pandas Excel writer using XlsxWriter as the engine
+        writer = pd.ExcelWriter(output, engine='openpyxl')
+
+        if agent_ids:
             for id in agent_ids:
-                # Get agent name
                 agent_name = db.query(models.agent_data).filter(models.agent_data.id == id).first()
+                logging.info(f"Processing agent: {agent_name.name if agent_name else 'Not found'}")
+
+                if not agent_name:
+                    logging.warning(f"Agent ID {id} not found in the database.")
+                    continue
+
                 sheet_name = agent_name.name.replace(" ", "").lower()
-                # print(agent_name.name)
-                # Query the students related to this agent
                 students = db.query(
                     models.User.name,
                     models.User.email,
@@ -1094,32 +1071,38 @@ async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_
                     models.User.state,
                     models.User.country,
                     models.User.passport
-                ).all()
+                ).filter(models.User.agent.ilike(f'%{agent_name.name}%')).all()
 
-                # Filter students by agent name
-                matched_students = [
-                    student for student in students if student.agent.replace(" ", "").lower() == sheet_name
-                ]
-                if  matched_students:
-                # Convert the data to a list of dictionaries
-                    flat_data = [student._asdict() for student in matched_students]
+                logging.info(f"Number of students found for agent {sheet_name}: {len(students)}")
 
-                    # Create a DataFrame for this agent's students
+                if students:
+                    flat_data = [student._asdict() for student in students]
                     df = pd.DataFrame(flat_data)
                     df.index += 1
+                    df.to_excel(writer, sheet_name=sheet_name, index_label="Sr no.")
 
-                    # Write the DataFrame to a new sheet
-                    df.to_excel(writer, sheet_name=sheet_name,index_label="Sr no.")
+            writer.close()
+
+            output.seek(0)
+            return StreamingResponse(
+                output,
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={"Content-Disposition": "attachment; filename=Madhavoverseas_Data.xlsx"}
+            )
+        else:
+            logging.error("No agent IDs provided.")
+            raise HTTPException(status_code=400, detail="No agent IDs provided.")
+    except Exception as e:
+        logging.error(f"An error occurred: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
-        writer.close()
 
-        # Ensure the buffer is set to the beginning of the stream
-        output.seek(0)
 
-        # Send the response with the correct headers
-        return Response(
-            content=output.read(),
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": "attachment; filename=Madhavoverseas_Data.xlsx"}
-        )
+@app.post("/commission_get")
+async def get_comm(commission=schemas.commission_get,db: Session = Depends(get_db)):
+    app_data = []
+    db_commissions=db.query(models.commission).all()
+    app_data.append(db_commissions)
+    return {'status': 200, 'data':db_commissions,
+            'message': 'Success'}
