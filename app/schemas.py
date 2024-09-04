@@ -118,6 +118,13 @@ class AgentWiseStudent(BaseModel):
 
 
 class commission_get(BaseModel):
-    Agent_list: Optional[List[int]] = None
-    application_list:Optional[List[int]]=None
-    pay_recieve:Optional[int]=None
+    # Agent_list: Optional[List[int]] = None
+    # application_list:Optional[List[int]]=None
+    # pay_recieve:Optional[int]=None
+    
+    paid_status:Optional[int] = Field(None)
+    agent_ids : Optional[List[int]]= None
+    
+class select_commission(BaseModel):
+    data:Optional[List[dict]]=None
+    

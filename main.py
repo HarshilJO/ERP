@@ -14,6 +14,7 @@ from fastapi.responses import StreamingResponse
 import logging
 import requests
 import openpyxl
+
 # import xlswriter
 from datetime import datetime, timedelta
 import pandas as pd
@@ -54,19 +55,25 @@ def get_db():
 
 
 def get_time():
-    original_tz = pytz.timezone('Asia/Kolkata')
+    original_tz = pytz.timezone("Asia/Kolkata")
     datetime_object = datetime.now(original_tz)
-    current_time = datetime_object.strftime('%Y-%m-%d %H:%M:%S')
+    current_time = datetime_object.strftime("%Y-%m-%d %H:%M:%S")
     return current_time
 
 
-async def currency(curr):
+async def currency_convert(curr, amount):
     # created by Harshil on 1-09
     url = "https://api.exchangerate-api.com/v4/latest/"
     response = requests.get(url + f"{curr}")
     res = response.json()
-    indian_val = res['rates'].get('INR', None)
-    return indian_val
+    indian_val = res["rates"].get("INR", None)
+    ind_val = float(indian_val)
+    amount = float(amount)
+
+    final_val = amount * ind_val
+    return final_val
+
+
 # <----Validations---->
 NAME_REGEX = re.compile(r"^[a-zA-Z_]+(?: [a-zA-Z_]+)*$")
 EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
@@ -95,7 +102,7 @@ statuses = [
     {"id": 18, "label": "Visa Unidentified"},
     {"id": 19, "label": "Refund Applied"},
     {"id": 20, "label": "Refund Processed"},
-    {"id": 21, "label": "Pending document"}
+    {"id": 21, "label": "Pending document"},
 ]
 
 
@@ -103,60 +110,66 @@ async def get_role_from_token(request: Request):
     headers = dict(request.headers)
     token_with_bearer = headers.get("authorization")
     if not token_with_bearer:
-        data = {'message': "Not Found",
-                'data': "Not found"}
-        return JSONResponse(
-            status_code=404,
-            content=data
-        )
+        data = {"message": "Not Found", "data": "Not found"}
+        return JSONResponse(status_code=404, content=data)
     final_token = token_with_bearer.replace("Bearer ", "")
     payload = jwt.decode(final_token, options={"verify_signature": False})
     role_name = payload.get("Role")
     if not role_name:
-        data = {'message': "Not Found",
-                'data': "Not found"}
-        return JSONResponse(
-            status_code=404,
-            content=data
-        )
+        data = {"message": "Not Found", "data": "Not found"}
+        return JSONResponse(status_code=404, content=data)
 
     return role_name
 
 
 # Address details
 def load_json(filename):
-    with open(filename, 'r', encoding='utf-8') as file:
+    with open(filename, "r", encoding="utf-8") as file:
         return json.load(file)
 
 
-data = load_json('address/countries.json')
+data = load_json("address/countries.json")
 
 
 @app.get("/countries")
 async def get_countries():
-    return {'status': 200, 'data': [{"id": country["id"], "name": country["name"]} for country in data],
-            'message': 'Success'}
+    return {
+        "status": 200,
+        "data": [{"id": country["id"], "name": country["name"]} for country in data],
+        "message": "Success",
+    }
 
-async def country_curr(Country:str):
+
+async def country_curr(Country: str):
 
     for country in data:
 
-        if country["name"]==Country:
+        if country["name"] == Country:
             return country["currency"]
             break
     else:
         return 0
+
 
 @app.get("/countries/{country_id}/states")
 async def get_states(country_id: int):
     for country in data:
         if country["id"] == country_id:
             if "states" in country:
-                return {'status': 200,
-                        'data': [{"id": state["id"], "name": state["name"]} for state in country["states"]],
-                        'message': 'Success'}
+                return {
+                    "status": 200,
+                    "data": [
+                        {"id": state["id"], "name": state["name"]}
+                        for state in country["states"]
+                    ],
+                    "message": "Success",
+                }
             else:
-                return {'status': 404, 'data': [], 'message': 'No states found for this country'}
+                return {
+                    "status": 404,
+                    "data": [],
+                    "message": "No states found for this country",
+                }
 
 
 @app.get("/states/{state_id}/cities")
@@ -166,16 +179,27 @@ async def get_cities(state_id: int):
             for state in country["states"]:
                 if state["id"] == state_id:
                     if "cities" in state:
-                        return {'status': 200,
-                                'data': [{"id": city["id"], "name": city["name"]} for city in state["cities"]],
-                                'message': 'Success'}
+                        return {
+                            "status": 200,
+                            "data": [
+                                {"id": city["id"], "name": city["name"]}
+                                for city in state["cities"]
+                            ],
+                            "message": "Success",
+                        }
                     else:
-                        return {'status': 404, 'data': [], 'message': 'No cities found for this state'}
+                        return {
+                            "status": 404,
+                            "data": [],
+                            "message": "No cities found for this state",
+                        }
 
 
 # Docs Dropdown
 @app.post("/docs/", response_model=schemas.DropdownOptionOut)
-async def create_option(option: schemas.DropdownOptionCreate, db: Session = Depends(get_db)):
+async def create_option(
+    option: schemas.DropdownOptionCreate, db: Session = Depends(get_db)
+):
     db_option = models.DocsDropdown(name=option.name)
     db.add(db_option)
     db.commit()
@@ -186,7 +210,7 @@ async def create_option(option: schemas.DropdownOptionCreate, db: Session = Depe
 @app.get("/docs/")
 async def read_options(db: Session = Depends(get_db)):
     options = db.query(models.DocsDropdown).all()
-    return {'status': 200, 'data': options, 'message': 'Success'}
+    return {"status": 200, "data": options, "message": "Success"}
 
 
 @app.get("/application/status")
@@ -195,32 +219,53 @@ async def application_status():
 
 
 @app.post("/application_status_update")
-async def app_status_update(app_status: schemas.application_status, db: Session = Depends(get_db)):
+async def app_status_update(
+    app_status: schemas.application_status, db: Session = Depends(get_db)
+):
 
-    db_user = db.query(models.Application).filter(models.Application.id == app_status.id).first()
+    db_user = (
+        db.query(models.Application)
+        .filter(models.Application.id == app_status.id)
+        .first()
+    )
     # print(name[0].student_name)
     if app_status.name == "Visa Granted":
         app_data = []
         app_data.append(db_user)
 
-        db_agent = db.query(models.User.agent).filter(models.User.id == app_data[0].student_id).first()
+        db_agent = (
+            db.query(models.User.agent)
+            .filter(models.User.id == app_data[0].student_id)
+            .first()
+        )
         app_data.append(db_agent)
         appli = app_data[0].id
-        student=app_data[0].student_name
-        agents =app_data[1].agent
-        db_agent_id=db.query(models.agent_data.id).filter(models.agent_data.name == agents).first()
+        student = app_data[0].student_name
+        agents = app_data[1].agent
+        db_agent_id = (
+            db.query(models.agent_data.id)
+            .filter(models.agent_data.name == agents)
+            .first()
+        )
         app_data.append(db_agent_id)
-        agent_id=app_data[2].id
-        curr=app_data[0].curr
-        yearly_fee=app_data[0].yearly_fee
-        scholarship=app_data[0].scholarship
-        fee_paying= str(round(float(float(yearly_fee) - ((float(yearly_fee)/100)*float(scholarship)))))
-        charges="53"
-        tds="15"
-        gst="0"
-        gain_commission = '10'
-        final_amount =round(float(fee_paying),2)
-        db_commission=models.commission(
+        agent_id = app_data[2].id
+        curr = app_data[0].curr
+        yearly_fee = app_data[0].yearly_fee
+        scholarship = app_data[0].scholarship
+        fee_paying = str(
+            round(
+                float(
+                    float(yearly_fee) - ((float(yearly_fee) / 100) * float(scholarship))
+                ),
+                3,
+            )
+        )
+        charges = "0"
+        tds = "0"
+        gst = "0"
+        gain_commission = "0"
+        final_amount = round(float(fee_paying), 3)
+        db_commission = models.commission(
             application_id=appli,
             Student_name=student,
             agent_id=agent_id,
@@ -234,28 +279,39 @@ async def app_status_update(app_status: schemas.application_status, db: Session 
             gst=gst,
             gain_commission=gain_commission,
             final_amount=final_amount,
-            pay_recieve=0
-
+            pay_recieve=0,
         )
         db.add(db_commission)
         db_user.status = app_status.name
         db.commit()
         db.refresh(db_commission)
         db.refresh(db_user)
-        return {"response": 200, "data": 'Application Status Updated', "message": "Application Status Updated"}
+        return {
+            "response": 200,
+            "data": "Application Status Updated",
+            "message": "Application Status Updated",
+        }
     else:
         current_data = []
         current_data.append(db_user)
 
-        db_agent = db.query(models.commission).filter(models.commission.application_id == current_data[0].id).first()
+        db_agent = (
+            db.query(models.commission)
+            .filter(models.commission.application_id == current_data[0].id)
+            .first()
+        )
         if db_agent:
             db.delete(db_agent)
-
 
     db_user.status = app_status.name
     db.commit()
     db.refresh(db_user)
-    return {"response": 200, "data": 'Application Status Updated', "message": "Application Status Updated"}
+    return {
+        "response": 200,
+        "data": "Application Status Updated",
+        "message": "Application Status Updated",
+    }
+
 
 def create_access_token(data: dict):
     try:
@@ -280,39 +336,37 @@ def create_access_token(data: dict):
 @app.post("/login")
 def login(user: schemas.Credentials, db: Session = Depends(get_db)):
     try:
-        db_user = db.query(models.Credentials).filter(models.Credentials.email == user.email).first()
+        db_user = (
+            db.query(models.Credentials)
+            .filter(models.Credentials.email == user.email)
+            .first()
+        )
         if db_user:
             if db_user.password == user.password:
-                position = 'Admin' if db_user.is_admin else 'Employee'
-                data = {
-                    'Role': position,
-                    'email': user.email
-                }
+                position = "Admin" if db_user.is_admin else "Employee"
+                data = {"Role": position, "email": user.email}
                 token = create_access_token(data=data)
-                content = {'message': "Login Successful",
-                           'data': {"role": position, "email": user.email, "token": token}}
+                content = {
+                    "message": "Login Successful",
+                    "data": {"role": position, "email": user.email, "token": token},
+                }
 
-                response = JSONResponse(
-                    status_code=200,
-                    content=content
-                )
+                response = JSONResponse(status_code=200, content=content)
                 response.headers["Authorization"] = f"Bearer {token}"
                 return response
 
             elif db_user.password != user.password:
-                data = {'message': "Incorrect username or password",
-                        'data': "Incorrect username or password"}
-                return JSONResponse(
-                    status_code=404,
-                    content=data
-                )
+                data = {
+                    "message": "Incorrect username or password",
+                    "data": "Incorrect username or password",
+                }
+                return JSONResponse(status_code=404, content=data)
         else:
-            data = {'message': "Incorrect username or password",
-                    'data': "Incorrect username or password"}
-            return JSONResponse(
-                status_code=404,
-                content=data
-            )
+            data = {
+                "message": "Incorrect username or password",
+                "data": "Incorrect username or password",
+            }
+            return JSONResponse(status_code=404, content=data)
     except Exception as e:
         logger.error("Error during login: %s", e)
         raise HTTPException(status_code=500, detail="Internal Server Error")
@@ -326,15 +380,33 @@ def login(user: schemas.Credentials, db: Session = Depends(get_db)):
 async def Dashboard(db: Session = Depends(get_db)):
     timestamps = db.query(models.Application.timestamp).all()
     timestamps = [t[0] for t in timestamps]
-    df = pd.DataFrame(timestamps, columns=['timestamp'])
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
-    df['month'] = df['timestamp'].dt.month
-    month_counts = df['month'].value_counts().sort_index()
-    month_names = {1: 'January', 2: 'February', 3: 'March', 4: 'April', 5: 'May', 6: 'June',
-                   7: 'July', 8: 'August', 9: 'September', 10: 'October', 11: 'November', 12: 'December'}
+    df = pd.DataFrame(timestamps, columns=["timestamp"])
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df["month"] = df["timestamp"].dt.month
+    month_counts = df["month"].value_counts().sort_index()
+    month_names = {
+        1: "January",
+        2: "February",
+        3: "March",
+        4: "April",
+        5: "May",
+        6: "June",
+        7: "July",
+        8: "August",
+        9: "September",
+        10: "October",
+        11: "November",
+        12: "December",
+    }
     month_counts.index = month_counts.index.map(month_names)
-    radialBar = [{"label": month, "series": count} for month, count in month_counts.items()]
-    result = db.query(models.User.agent, func.count(models.User.id)).group_by(models.User.agent).all()
+    radialBar = [
+        {"label": month, "series": count} for month, count in month_counts.items()
+    ]
+    result = (
+        db.query(models.User.agent, func.count(models.User.id))
+        .group_by(models.User.agent)
+        .all()
+    )
     donut = []
     for agent, count in result:
         donut.append({"label": agent, "series": count})
@@ -344,26 +416,37 @@ async def Dashboard(db: Session = Depends(get_db)):
     count_student = db.query(models.User).count()
     count_application = db.query(models.Application).count()
     count_agent = db.query(models.agent_data).count()
-    count_pending_application = db.query(models.Application).filter(
-        models.Application.status != "Application Completed").count()
-    count_done_application = db.query(models.Application).filter(
-        models.Application.status == "Application Completed").count()
-    total_visa_granted = db.query(models.Application).filter(models.Application.status == "Visa Granted").count()
-    total_count = {"student_count": count_student,
-                   "Application_count": count_application,
-                   "Agent_count": count_agent,
-                   "Application_Completed": count_done_application,
-                   "Application_Incomplete": count_pending_application,
-                   "RadialBar": radialBar,
-                   "donut": donut,
-                   "data": Student_data,
-                   "visa": total_visa_granted
-
-                   }
-    return {'status': 200, 'data': total_count, 'message': 'Success'}
+    count_pending_application = (
+        db.query(models.Application)
+        .filter(models.Application.status != "Application Completed")
+        .count()
+    )
+    count_done_application = (
+        db.query(models.Application)
+        .filter(models.Application.status == "Application Completed")
+        .count()
+    )
+    total_visa_granted = (
+        db.query(models.Application)
+        .filter(models.Application.status == "Visa Granted")
+        .count()
+    )
+    total_count = {
+        "student_count": count_student,
+        "Application_count": count_application,
+        "Agent_count": count_agent,
+        "Application_Completed": count_done_application,
+        "Application_Incomplete": count_pending_application,
+        "RadialBar": radialBar,
+        "donut": donut,
+        "data": Student_data,
+        "visa": total_visa_granted,
+    }
+    return {"status": 200, "data": total_count, "message": "Success"}
 
 
 # </----Dashboard----/>
+
 
 class AgentWiseStudent(BaseModel):
     agent_id: Optional[List[int]] = None
@@ -379,18 +462,26 @@ async def read_users(student: schemas.AgentWiseStudent, db: Session = Depends(ge
     agent_ids = student.agent_id
     if student.agent_id:
         for id in agent_ids:
-            agent_name = db.query(models.agent_data).filter(models.agent_data.id == id).all()
+            agent_name = (
+                db.query(models.agent_data).filter(models.agent_data.id == id).all()
+            )
             agentWiseStudent.append(agent_name[0].name.replace(" ", "").lower())
             # print(agentWiseStudent)
 
         # getting students with that agent
         for agent_name in agentWiseStudent:
             students = db.query(models.User).all()
-            matched_students = [student for student in students if student.agent.replace(" ", "").lower() == agent_name]
+            matched_students = [
+                student
+                for student in students
+                if student.agent.replace(" ", "").lower() == agent_name
+            ]
             response.append(matched_students)
 
         if student.agent_id and name:
-            user_data = db.query(models.User).filter(models.User.name.ilike(f"%{name}%")).all()
+            user_data = (
+                db.query(models.User).filter(models.User.name.ilike(f"%{name}%")).all()
+            )
 
             for agent_name in agentWiseStudent:
                 for student in user_data:
@@ -398,43 +489,49 @@ async def read_users(student: schemas.AgentWiseStudent, db: Session = Depends(ge
                         # print(agent_name)
                         final_result_with_search.append(student)
 
-            return {'status': 200, 'data': final_result_with_search, 'message': 'Success'}
+            return {
+                "status": 200,
+                "data": final_result_with_search,
+                "message": "Success",
+            }
 
-        return {'status': 200, 'data': [item for row in response for item in row], 'message': 'Success'}
+        return {
+            "status": 200,
+            "data": [item for row in response for item in row],
+            "message": "Success",
+        }
     else:
         student_info = []
 
         if name:
-            user_data = db.query(models.User).filter(models.User.name.ilike(f"%{name}%")).all()
+            user_data = (
+                db.query(models.User).filter(models.User.name.ilike(f"%{name}%")).all()
+            )
             if not user_data:
-                return {'status': 200, 'data': [], 'message': 'Success'}
+                return {"status": 200, "data": [], "message": "Success"}
             else:
-                return {'status': 200, 'data': user_data, 'message': 'Success'}
+                return {"status": 200, "data": user_data, "message": "Success"}
 
         else:
             user_data = db.query(models.User).all()
             student_info.extend(user_data)
-            return {'status': 200, 'data': student_info, 'message': 'Success'}
+            return {"status": 200, "data": student_info, "message": "Success"}
 
 
 @app.get("/user_name")
 async def user_name(db: Session = Depends(get_db)):
     agent_names = db.query(models.User.id, models.User.name).all()
     agents_list = [{"id": id, "name": name} for id, name in agent_names]
-    return {'status': 200, 'data': agents_list, 'message': 'Success'}
+    return {"status": 200, "data": agents_list, "message": "Success"}
 
 
 @app.get("/users/{id}")
 async def get_user(id: int, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.id == id).first()
     if not user:
-        data = {'message': "Not Found",
-                'data': "Not found"}
-        return JSONResponse(
-            status_code=404,
-            content=data
-        )
-    return {'status': 200, 'data': user, 'message': 'Success'}
+        data = {"message": "Not Found", "data": "Not found"}
+        return JSONResponse(status_code=404, content=data)
+    return {"status": 200, "data": user, "message": "Success"}
 
 
 # User creation or update endpoint
@@ -446,28 +543,30 @@ async def get_user(id: int, db: Session = Depends(get_db)):
 @app.get("/logs/")
 async def get_logs(db: Session = Depends(get_db)):
     logs = db.query(models.Logs).order_by(desc(models.Logs.id)).limit(4).all()
-    return {'status': 200, 'data': logs, 'message': 'Success'}
+    return {"status": 200, "data": logs, "message": "Success"}
 
 
 def get_countriesid(data, country_name):
     for country in data:
-        if country['name'] == country_name:
-            return country['id']
+        if country["name"] == country_name:
+            return country["id"]
     return None  # Return None if the country name is not found
 
 
 def get_statesids(data, country_name, state_name):
     for country in data:
-        if country['name'] == country_name:
+        if country["name"] == country_name:
             # If the country name matches, loop through the states in that country
-            for state in country['states']:
-                if state['name'] == state_name:
-                    return state['id']
+            for state in country["states"]:
+                if state["name"] == state_name:
+                    return state["id"]
     return None  # Return None if the state name is not found within the given country
 
 
 @app.post("/users/")
-async def create_or_update_user(user: schemas.User, request: Request, db: Session = Depends(get_db)):
+async def create_or_update_user(
+    user: schemas.User, request: Request, db: Session = Depends(get_db)
+):
     state_name = user.state
     country_name = user.country
     role_name = await get_role_from_token(request)
@@ -478,13 +577,13 @@ async def create_or_update_user(user: schemas.User, request: Request, db: Sessio
 
     phone_str = str(user.phone)
     # Validate phone number as a string
-    a = re.fullmatch(r'[6-9][0-9]{9}', phone_str)
+    a = re.fullmatch(r"[6-9][0-9]{9}", phone_str)
     if not NAME_REGEX.match(user.name):
-        return {'status': 400, 'message': 'Invalid Name'}
+        return {"status": 400, "message": "Invalid Name"}
     if not EMAIL_REGEX.match(user.email):
-        return {'status': 400, 'message': 'Invalid Email'}
+        return {"status": 400, "message": "Invalid Email"}
     if not PHONE_REGEX.match(phone_str):
-        return {'status': 400, 'message': 'Invalid Number'}
+        return {"status": 400, "message": "Invalid Number"}
 
     if user.id and user.id > 0:
         db_user = db.query(models.User).filter(models.User.id == user.id).first()
@@ -493,7 +592,7 @@ async def create_or_update_user(user: schemas.User, request: Request, db: Sessio
             new_log = models.Logs(
                 operation="Updated",
                 timestamp=get_time(),
-                details=f"Student {db_user.name} is Updated"
+                details=f"Student {db_user.name} is Updated",
             )
             db.add(new_log)
             for key, value in user.dict(exclude_unset=True).items():
@@ -505,7 +604,7 @@ async def create_or_update_user(user: schemas.User, request: Request, db: Sessio
             db.refresh(db_user)
             db.refresh(new_log)
 
-            return {'status': 200, 'data': db_user, 'message': 'Success'}
+            return {"status": 200, "data": db_user, "message": "Success"}
     # Create new user
     db_user = models.User(**user.dict(exclude={"id"}), logged_by=role_name)
     db_user.country_id = country_ids
@@ -517,28 +616,24 @@ async def create_or_update_user(user: schemas.User, request: Request, db: Sessio
     new_log = models.Logs(
         operation="Created",
         timestamp=get_time(),
-        details=f"Student {db_user.name} Created"
+        details=f"Student {db_user.name} Created",
     )
 
     db.add(new_log)
     db.commit()
     db.refresh(new_log)
-    return {'status': 200, 'data':'Success','message': 'Successfully Created'}
+    return {"status": 200, "data": "Success", "message": "Successfully Created"}
 
 
 @app.delete("/users/{user_id}")
 async def delete_user(user_id: int, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
     if db_user is None:
-        data = {'message': "Not Found",
-                'data': "Not found"}
-        return JSONResponse(
-            status_code=404,
-            content=data
-        )
+        data = {"message": "Not Found", "data": "Not found"}
+        return JSONResponse(status_code=404, content=data)
     db.delete(db_user)
     db.commit()
-    return {'status': 204, 'data': 'Student Deleted', 'message': 'Student  Deleted'}
+    return {"status": 204, "data": "Student Deleted", "message": "Student  Deleted"}
 
 
 # </----Student Details----/>
@@ -546,7 +641,7 @@ async def delete_user(user_id: int, db: Session = Depends(get_db)):
 async def agent_name(db: Session = Depends(get_db)):
     agent_names = db.query(models.agent_data.id, models.agent_data.name).all()
     agents_list = [{"id": id, "name": name} for id, name in agent_names]
-    return {'status': 200, 'data': agents_list, 'message': 'Success'}
+    return {"status": 200, "data": agents_list, "message": "Success"}
 
 
 # Agent Details
@@ -566,11 +661,15 @@ def get_stateids(country_data, state_names):
 async def get_all_agent(query: schemas.ApplicationQuery, db: Session = Depends(get_db)):
     agent_info = []
     if query.name:
-        agents = db.query(models.agent_data).filter(models.agent_data.name.ilike(f"%{query.name}%")).all()
+        agents = (
+            db.query(models.agent_data)
+            .filter(models.agent_data.name.ilike(f"%{query.name}%"))
+            .all()
+        )
         if not agents:
-            return {'status': 200, 'data': [], 'message': 'Agent not found'}
+            return {"status": 200, "data": [], "message": "Agent not found"}
         else:
-            return {'status': 200, 'data': agents, 'message': 'Agent found'}
+            return {"status": 200, "data": agents, "message": "Agent found"}
     else:
         agents = db.query(models.agent_data).all()
         agent_info.extend(agents)
@@ -578,26 +677,30 @@ async def get_all_agent(query: schemas.ApplicationQuery, db: Session = Depends(g
         state_id = get_stateids(data, state_name)
         for id in state_id:
             for item in agent_info:
-                item.__dict__['state_id'] = id
-    return {'status': 200, 'data': agent_info, 'message': 'Success'}
+                item.__dict__["state_id"] = id
+    return {"status": 200, "data": agent_info, "message": "Success"}
 
 
 @app.post("/agents/")
-async def CU_agent(request: Request, agent: schemas.AgentSchema, db: Session = Depends(get_db)):
+async def CU_agent(
+    request: Request, agent: schemas.AgentSchema, db: Session = Depends(get_db)
+):
     headers = dict(request.headers)
     token_withBearer = headers["authorization"]
     final_token = token_withBearer.replace("Bearer ", "")
     payload = jwt.decode(final_token, options={"verify_signature": False})
 
     if agent.id and agent.id > 0:
-        db_agent = db.query(models.agent_data).filter(models.agent_data.id == agent.id).first()
+        db_agent = (
+            db.query(models.agent_data).filter(models.agent_data.id == agent.id).first()
+        )
         if db_agent:
             # Update existing agent
 
             new_log = models.Logs(
                 operation="Updated",
                 timestamp=get_time(),
-                details=f"Agent {db_agent.name} is Updated"
+                details=f"Agent {db_agent.name} is Updated",
             )
             db.add(new_log)
             for key, value in agent.dict(exclude_unset=True).items():
@@ -606,14 +709,14 @@ async def CU_agent(request: Request, agent: schemas.AgentSchema, db: Session = D
             db.commit()
             db.refresh(db_agent)
             db.refresh(new_log)
-            return {'status': 200, 'data': "Agent Details Updated", 'message': 'Agent Details Updated'}
+            return {
+                "status": 200,
+                "data": "Agent Details Updated",
+                "message": "Agent Details Updated",
+            }
         else:
-            data = {'message': "Not Found",
-                    'data': "Not found"}
-            return JSONResponse(
-                status_code=404,
-                content=data
-            )
+            data = {"message": "Not Found", "data": "Not found"}
+            return JSONResponse(status_code=404, content=data)
     else:
         # Create new agent without an id
         new_agent = models.agent_data(**agent.dict(exclude={"id"}))
@@ -624,31 +727,31 @@ async def CU_agent(request: Request, agent: schemas.AgentSchema, db: Session = D
         new_log = models.Logs(
             operation="Created",
             timestamp=get_time(),
-            details=f"New agent {new_agent.name} is Created"
+            details=f"New agent {new_agent.name} is Created",
         )
         db.add(new_log)
         db.commit()
         db.refresh(new_log)
-        return {'status': 200, 'data': 'New Agent Created', 'message': 'New Agent Created'}
+        return {
+            "status": 200,
+            "data": "New Agent Created",
+            "message": "New Agent Created",
+        }
 
 
 @app.delete("/agent_delete/{id}")
 async def delete_agent(id: int, db: Session = Depends(get_db)):
     user = db.query(models.agent_data).filter(models.agent_data.id == id).first()
     if not user:
-        data = {'message': "Not Found",
-                'data': "Not found"}
-        return JSONResponse(
-            status_code=404,
-            content=data
-        )
+        data = {"message": "Not Found", "data": "Not found"}
+        return JSONResponse(status_code=404, content=data)
     db.delete(user)
     db.commit()
-    return {'status': 200, 'data': 'Agent Deleted', 'message': 'Agent Deleted'}
+    return {"status": 200, "data": "Agent Deleted", "message": "Agent Deleted"}
 
 
 # <----Applications---->
-uni_data = load_json('address/universities.json')
+uni_data = load_json("address/universities.json")
 
 
 class UniversityRequest(BaseModel):
@@ -664,23 +767,16 @@ async def get_states(request: UniversityRequest):
         if uni["country"] == uni_name:
             count += 1
             university_name = uni["name"].upper()
-            university_data = {
-                "id": count,
-                "name": university_name
-            }
+            university_data = {"id": count, "name": university_name}
             data.append(university_data)
 
     if data:
-        return {
-            'status': 200,
-            'data': data,
-            'message': 'Universities Found'
-        }
+        return {"status": 200, "data": data, "message": "Universities Found"}
     else:
         return {
-            'status': 404,
-            'data': [],
-            'message': 'No Universities Found in this Country'
+            "status": 404,
+            "data": [],
+            "message": "No Universities Found in this Country",
         }
 
 
@@ -689,15 +785,18 @@ async def add_uni(data: schemas.AddUni):
     if data.university_name.lower() not in [i["name"].lower() for i in uni_data]:
         data_to_add = {"name": data.university_name, "country": data.Country}
         uni_data.append(data_to_add)
-        with open('address/universities.json', 'w') as file:
+        with open("address/universities.json", "w") as file:
             json.dump(uni_data, file, indent=4)
-        return {'status': 200, 'data': 'Successfully Added', 'message': 'Successfully Added'}
-    data_res = {'message': 'University is already Present in List',
-                'data': "Already Exist"}
-    return JSONResponse(
-        status_code=409,
-        content=data_res
-    )
+        return {
+            "status": 200,
+            "data": "Successfully Added",
+            "message": "Successfully Added",
+        }
+    data_res = {
+        "message": "University is already Present in List",
+        "data": "Already Exist",
+    }
+    return JSONResponse(status_code=409, content=data_res)
 
 
 # Get all applications
@@ -705,59 +804,85 @@ async def add_uni(data: schemas.AddUni):
 async def get_user(id: int, db: Session = Depends(get_db)):
     user = db.query(models.Application).filter(models.Application.id == id).first()
     if not user:
-        data = {'message': "Not Found",
-                'data': "Not found"}
-        return JSONResponse(
-            status_code=404,
-            content=data
-        )
-    return {'status': 200, 'data': user, 'message': 'Success'}
+        data = {"message": "Not Found", "data": "Not found"}
+        return JSONResponse(status_code=404, content=data)
+    return {"status": 200, "data": user, "message": "Success"}
 
 
 @app.post("/application_get")
-async def get_all_applications(query: schemas.ApplicationQuery, db: Session = Depends(get_db)):
+async def get_all_applications(
+    query: schemas.ApplicationQuery, db: Session = Depends(get_db)
+):
     final_result = []
 
     if query.ids and query.name:
         for id in query.ids:
             for j in statuses:
                 if id == j["id"]:
-                    final_result.extend(db.query(models.Application).filter(models.Application.status == j["label"],
-                                                                            models.Application.student_name.ilike(
-                                                                                f"%{query.name}%")).all())
+                    final_result.extend(
+                        db.query(models.Application)
+                        .filter(
+                            models.Application.status == j["label"],
+                            models.Application.student_name.ilike(f"%{query.name}%"),
+                        )
+                        .all()
+                    )
 
-        return {'status': 200, 'data': final_result, 'message': 'Applications fetched successfully by id and name'}
+        return {
+            "status": 200,
+            "data": final_result,
+            "message": "Applications fetched successfully by id and name",
+        }
     elif query.ids:
         for id in query.ids:
             for j in statuses:
                 if id == j["id"]:
                     final_result.extend(
-                        db.query(models.Application).filter(models.Application.status == j["label"]).all())
+                        db.query(models.Application)
+                        .filter(models.Application.status == j["label"])
+                        .all()
+                    )
 
-        return {'status': 200, 'data': final_result, 'message': 'Applications fetched successfully by id'}
+        return {
+            "status": 200,
+            "data": final_result,
+            "message": "Applications fetched successfully by id",
+        }
 
     elif query.name:
-        agents = db.query(models.Application).filter(models.Application.student_name.ilike(f"%{query.name}%")).all()
+        agents = (
+            db.query(models.Application)
+            .filter(models.Application.student_name.ilike(f"%{query.name}%"))
+            .all()
+        )
         if not agents:
-            return {'status': 200, 'data': [], 'message': 'Application not found'}
+            return {"status": 200, "data": [], "message": "Application not found"}
         else:
-            return {'status': 200, 'data': agents, 'message': 'Success by name'}
+            return {"status": 200, "data": agents, "message": "Success by name"}
     else:
         agents = db.query(models.Application).all()
 
-    return {'status': 200, 'data': agents, 'message': 'Success all '}
+    return {"status": 200, "data": agents, "message": "Success all "}
 
 
 @app.post("/application")
-async def CU_Applications(application: schemas.Application, request: Request, db: Session = Depends(get_db)):
-    curr =await country_curr(application.Country)
+async def CU_Applications(
+    application: schemas.Application, request: Request, db: Session = Depends(get_db)
+):
+    curr = await country_curr(application.Country)
     role_name = await get_role_from_token(request)
-    user = db.query(models.User).filter(models.User.id == application.student_id).first()
+    user = (
+        db.query(models.User).filter(models.User.id == application.student_id).first()
+    )
     if user:
         rent_time = datetime.utcnow()
-        current_time = rent_time.strftime('%Y-%m-%d %H:%M:%S')
+        current_time = rent_time.strftime("%Y-%m-%d %H:%M:%S")
         if application.id and application.id > 0:
-            db_application = db.query(models.Application).filter(models.Application.id == application.id).first()
+            db_application = (
+                db.query(models.Application)
+                .filter(models.Application.id == application.id)
+                .first()
+            )
             if db_application:
                 # Update existing application
                 for key, value in application.dict(exclude_unset=True).items():
@@ -765,13 +890,14 @@ async def CU_Applications(application: schemas.Application, request: Request, db
                 new_log = models.Logs(
                     operation="Created",
                     timestamp=get_time(),
-                    details=f"New Application Created for <b>{user.name}</b> by <b>{role_name}</b>")
+                    details=f"New Application Created for <b>{user.name}</b> by <b>{role_name}</b>",
+                )
 
                 db.add(new_log)
-                #updated by Harshil on 1-09
+                # updated by Harshil on 1-09
                 db_application.curr = curr
-                db_application.yearly_fee=application.yearly_fee
-                db_application.scholarship=application.scholarship
+                db_application.yearly_fee = application.yearly_fee
+                db_application.scholarship = application.scholarship
                 # end updated by Harshil on 1-09
 
                 db_application.student_name = user.name
@@ -779,15 +905,15 @@ async def CU_Applications(application: schemas.Application, request: Request, db
                 db.commit()
                 db.refresh(db_application)
                 db.refresh(new_log)
-                return {'status': 200, 'data': db_application, 'message': 'Application details updated'}
+                return {
+                    "status": 200,
+                    "data": db_application,
+                    "message": "Application details updated",
+                }
             else:
                 print("Update Error")
-                data = {'message': "Not Found",
-                        'data': "Not found"}
-                return JSONResponse(
-                    status_code=404,
-                    content=data
-                )
+                data = {"message": "Not Found", "data": "Not found"}
+                return JSONResponse(status_code=404, content=data)
         else:
             # Create new application without an id
             new_application = models.Application(**application.dict(exclude={"id"}))
@@ -808,36 +934,47 @@ async def CU_Applications(application: schemas.Application, request: Request, db
             new_log = models.Logs(
                 operation="Created",
                 timestamp=get_time(),
-                details=f"New Application Created for <b>{user.name}</b> by <b>{role_name}</b>"
+                details=f"New Application Created for <b>{user.name}</b> by <b>{role_name}</b>",
             )
             db.add(new_log)
             db.commit()
             db.refresh(new_log)
 
-            return {'status': 200, 'data': 'New Application Created', 'message': 'New application created'}
+            return {
+                "status": 200,
+                "data": "New Application Created",
+                "message": "New application created",
+            }
     else:
-        return {'status': 404, 'data': 'No student with given ID', 'message': 'No student with given ID'}
+        return {
+            "status": 404,
+            "data": "No student with given ID",
+            "message": "No student with given ID",
+        }
 
 
 @app.delete("/application_delete/{id}")
 async def delete_application(id: int, db: Session = Depends(get_db)):
-    Application = db.query(models.Application).filter(models.Application.id == id).first()
+    Application = (
+        db.query(models.Application).filter(models.Application.id == id).first()
+    )
     if not Application:
-        data = {'message': "Not Found",
-                'data': "Not found"}
-        return JSONResponse(
-            status_code=404,
-            content=data
-        )
+        data = {"message": "Not Found", "data": "Not found"}
+        return JSONResponse(status_code=404, content=data)
     db.delete(Application)
     db.commit()
-    return {'status': 204, 'data': 'Application Deleted', 'message': 'Application Deleted'}
+    return {
+        "status": 204,
+        "data": "Application Deleted",
+        "message": "Application Deleted",
+    }
 
 
 # </----Applications/---->\
 
 
 # <----Course Search---->
+
 
 @app.post("/search_courses/")
 def search_courses(search: schemas.CourseSearch, db: Session = Depends(get_db)):
@@ -848,15 +985,24 @@ def search_courses(search: schemas.CourseSearch, db: Session = Depends(get_db)):
         final_res = []
         pattern = search.global_search.replace(" ", "").lower()
         if search.course_name:
-            name_conditions = [models.CourseName.course_name.ilike(f"%{cname}%") for cname in search.course_name]
+            name_conditions = [
+                models.CourseName.course_name.ilike(f"%{cname}%")
+                for cname in search.course_name
+            ]
             conditions.append(or_(*name_conditions))
 
         if search.university_name:
-            uni_conditions = [models.CourseName.uni_name.ilike(f"%{uni}%") for uni in search.university_name]
+            uni_conditions = [
+                models.CourseName.uni_name.ilike(f"%{uni}%")
+                for uni in search.university_name
+            ]
             conditions.append(or_(*uni_conditions))
 
         if search.study_permit:
-            permit_conditions = [models.CourseName.study_permit == permit for permit in search.study_permit]
+            permit_conditions = [
+                models.CourseName.study_permit == permit
+                for permit in search.study_permit
+            ]
             conditions.append(or_(*permit_conditions))
 
         final_condition = and_(*conditions)
@@ -871,33 +1017,52 @@ def search_courses(search: schemas.CourseSearch, db: Session = Depends(get_db)):
                 uni_name = i.uni_name.replace(" ", "").lower()
 
                 # Use the sanitized pattern
-                if re.search(pattern, course_name, re.IGNORECASE) or re.search(pattern, uni_name, re.IGNORECASE):
+                if re.search(pattern, course_name, re.IGNORECASE) or re.search(
+                    pattern, uni_name, re.IGNORECASE
+                ):
                     final_res.append(i)
 
-            return {'status': 200, 'data': final_res, 'message': 'Success  '}
+            return {"status": 200, "data": final_res, "message": "Success  "}
         else:
-            query = db.query(models.CourseName).filter(
-                models.CourseName.course_name.ilike(f"%{search.global_search}%")).all()
-            query2 = db.query(models.CourseName).filter(
-                models.CourseName.uni_name.ilike(f"%{search.global_search}%")).all()
+            query = (
+                db.query(models.CourseName)
+                .filter(
+                    models.CourseName.course_name.ilike(f"%{search.global_search}%")
+                )
+                .all()
+            )
+            query2 = (
+                db.query(models.CourseName)
+                .filter(models.CourseName.uni_name.ilike(f"%{search.global_search}%"))
+                .all()
+            )
             if query:
-                return {'status': 200, 'data': query, 'message': 'Success  '}
+                return {"status": 200, "data": query, "message": "Success  "}
             if query2:
-                return {'status': 200, 'data': query2, 'message': 'Success  '}
+                return {"status": 200, "data": query2, "message": "Success  "}
             else:
-                return {'status': 200, 'data': [], 'message': 'not found'}
+                return {"status": 200, "data": [], "message": "not found"}
 
     elif search.course_name or search.university_name or search.study_permit:
         if search.course_name:
-            name_conditions = [models.CourseName.course_name.ilike(f"%{cname}%") for cname in search.course_name]
+            name_conditions = [
+                models.CourseName.course_name.ilike(f"%{cname}%")
+                for cname in search.course_name
+            ]
             conditions.append(or_(*name_conditions))
 
         if search.university_name:
-            uni_conditions = [models.CourseName.uni_name.ilike(f"%{uni}%") for uni in search.university_name]
+            uni_conditions = [
+                models.CourseName.uni_name.ilike(f"%{uni}%")
+                for uni in search.university_name
+            ]
             conditions.append(or_(*uni_conditions))
 
         if search.study_permit:
-            permit_conditions = [models.CourseName.study_permit == permit for permit in search.study_permit]
+            permit_conditions = [
+                models.CourseName.study_permit == permit
+                for permit in search.study_permit
+            ]
             conditions.append(or_(*permit_conditions))
 
         final_condition = and_(*conditions)
@@ -906,11 +1071,15 @@ def search_courses(search: schemas.CourseSearch, db: Session = Depends(get_db)):
 
         response.append(query)
 
-        return {'status': 200, 'data': [item for row in response for item in row], 'message': 'Success  '}
+        return {
+            "status": 200,
+            "data": [item for row in response for item in row],
+            "message": "Success  ",
+        }
 
     else:
         query = db.query(models.CourseName).all()
-        return {'status': 200, 'data': query, 'message': 'Success  '}
+        return {"status": 200, "data": query, "message": "Success  "}
 
 
 @app.post("/search_courses")
@@ -922,15 +1091,24 @@ def search_courses(search: schemas.CourseSearch, db: Session = Depends(get_db)):
         final_res = []
         pattern = search.global_search.replace(" ", "").lower()
         if search.course_name:
-            name_conditions = [models.CourseName.course_name.ilike(f"%{cname}%") for cname in search.course_name]
+            name_conditions = [
+                models.CourseName.course_name.ilike(f"%{cname}%")
+                for cname in search.course_name
+            ]
             conditions.append(or_(*name_conditions))
 
         if search.university_name:
-            uni_conditions = [models.CourseName.uni_name.ilike(f"%{uni}%") for uni in search.university_name]
+            uni_conditions = [
+                models.CourseName.uni_name.ilike(f"%{uni}%")
+                for uni in search.university_name
+            ]
             conditions.append(or_(*uni_conditions))
 
         if search.study_permit:
-            permit_conditions = [models.CourseName.study_permit == permit for permit in search.study_permit]
+            permit_conditions = [
+                models.CourseName.study_permit == permit
+                for permit in search.study_permit
+            ]
             conditions.append(or_(*permit_conditions))
 
         final_condition = and_(*conditions)
@@ -945,33 +1123,52 @@ def search_courses(search: schemas.CourseSearch, db: Session = Depends(get_db)):
                 uni_name = i.uni_name.replace(" ", "").lower()
 
                 # Use the sanitized pattern
-                if re.search(pattern, course_name, re.IGNORECASE) or re.search(pattern, uni_name, re.IGNORECASE):
+                if re.search(pattern, course_name, re.IGNORECASE) or re.search(
+                    pattern, uni_name, re.IGNORECASE
+                ):
                     final_res.append(i)
 
-            return {'status': 200, 'data': final_res, 'message': 'Success  '}
+            return {"status": 200, "data": final_res, "message": "Success  "}
         else:
-            query = db.query(models.CourseName).filter(
-                models.CourseName.course_name.ilike(f"%{search.global_search}%")).all()
-            query2 = db.query(models.CourseName).filter(
-                models.CourseName.uni_name.ilike(f"%{search.global_search}%")).all()
+            query = (
+                db.query(models.CourseName)
+                .filter(
+                    models.CourseName.course_name.ilike(f"%{search.global_search}%")
+                )
+                .all()
+            )
+            query2 = (
+                db.query(models.CourseName)
+                .filter(models.CourseName.uni_name.ilike(f"%{search.global_search}%"))
+                .all()
+            )
             if query:
-                return {'status': 200, 'data': query, 'message': 'Success  '}
+                return {"status": 200, "data": query, "message": "Success  "}
             if query2:
-                return {'status': 200, 'data': query2, 'message': 'Success  '}
+                return {"status": 200, "data": query2, "message": "Success  "}
             else:
-                return {'status': 200, 'data': [], 'message': 'not found'}
+                return {"status": 200, "data": [], "message": "not found"}
 
     elif search.course_name or search.university_name or search.study_permit:
         if search.course_name:
-            name_conditions = [models.CourseName.course_name.ilike(f"%{cname}%") for cname in search.course_name]
+            name_conditions = [
+                models.CourseName.course_name.ilike(f"%{cname}%")
+                for cname in search.course_name
+            ]
             conditions.append(or_(*name_conditions))
 
         if search.university_name:
-            uni_conditions = [models.CourseName.uni_name.ilike(f"%{uni}%") for uni in search.university_name]
+            uni_conditions = [
+                models.CourseName.uni_name.ilike(f"%{uni}%")
+                for uni in search.university_name
+            ]
             conditions.append(or_(*uni_conditions))
 
         if search.study_permit:
-            permit_conditions = [models.CourseName.study_permit == permit for permit in search.study_permit]
+            permit_conditions = [
+                models.CourseName.study_permit == permit
+                for permit in search.study_permit
+            ]
             conditions.append(or_(*permit_conditions))
 
         final_condition = and_(*conditions)
@@ -980,21 +1177,29 @@ def search_courses(search: schemas.CourseSearch, db: Session = Depends(get_db)):
 
         response.append(query)
 
-        return {'status': 200, 'data': [item for row in response for item in row], 'message': 'Success  '}
+        return {
+            "status": 200,
+            "data": [item for row in response for item in row],
+            "message": "Success  ",
+        }
 
     else:
         query = db.query(models.CourseName).all()
-        return {'status': 200, 'data': query, 'message': 'Success  '}
+        return {"status": 200, "data": query, "message": "Success  "}
 
 
 # Visa Granted
 @app.get("/visa/")
 async def get_visa_granted(db: Session = Depends(get_db)):
     for i in statuses:
-        if i['label'] == "Visa Granted":
-            students1 = db.query(models.Application).filter(models.Application.status == i["label"]).order_by(
-                desc(models.Application.id)).all()
-    return {'status': 200, 'data': students1, 'message': 'Success all '}
+        if i["label"] == "Visa Granted":
+            students1 = (
+                db.query(models.Application)
+                .filter(models.Application.status == i["label"])
+                .order_by(desc(models.Application.id))
+                .all()
+            )
+    return {"status": 200, "data": students1, "message": "Success all "}
 
 
 @app.get("/get_uni")
@@ -1002,7 +1207,7 @@ async def get_uni_drop(db: Session = Depends(get_db)):
     uni_data = (
         db.query(
             models.CourseName.uni_name,
-            func.count(models.CourseName.id).label('course_count')
+            func.count(models.CourseName.id).label("course_count"),
         )
         .group_by(models.CourseName.uni_name)
         .all()
@@ -1016,7 +1221,7 @@ async def get_uni_drop(db: Session = Depends(get_db)):
     permit_data = (  # uni_data
         db.query(
             models.CourseName.study_permit,
-            func.count(models.CourseName.uni_name).label('course_count')
+            func.count(models.CourseName.uni_name).label("course_count"),
         )
         .group_by(models.CourseName.study_permit)
         .all()
@@ -1028,7 +1233,7 @@ async def get_uni_drop(db: Session = Depends(get_db)):
     uni_nm_data = (  # uni_data
         db.query(
             models.CourseName.course_name,
-            func.count(models.CourseName.uni_name).label('course_count')
+            func.count(models.CourseName.uni_name).label("course_count"),
         )
         .group_by(models.CourseName.course_name)
         .all()
@@ -1037,8 +1242,15 @@ async def get_uni_drop(db: Session = Depends(get_db)):
         {"id": i + 1, "name": uni_name, "count": course_count}
         for i, (uni_name, course_count) in enumerate(uni_nm_data)
     ]
-    return {'status': 200, 'data': {"uni_data": agents_list, "permit_data": permit_list, "course_data": course_list},
-            'message': 'Success'}
+    return {
+        "status": 200,
+        "data": {
+            "uni_data": agents_list,
+            "permit_data": permit_list,
+            "course_data": course_list,
+        },
+        "message": "Success",
+    }
 
 
 @app.post("/csv")
@@ -1049,31 +1261,43 @@ async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_
         logging.info(f"Agent IDs received: {agent_ids}")
 
         # Create a Pandas Excel writer using XlsxWriter as the engine
-        writer = pd.ExcelWriter(output, engine='openpyxl')
+        writer = pd.ExcelWriter(output, engine="openpyxl")
 
         if agent_ids:
             for id in agent_ids:
-                agent_name = db.query(models.agent_data).filter(models.agent_data.id == id).first()
-                logging.info(f"Processing agent: {agent_name.name if agent_name else 'Not found'}")
+                agent_name = (
+                    db.query(models.agent_data)
+                    .filter(models.agent_data.id == id)
+                    .first()
+                )
+                logging.info(
+                    f"Processing agent: {agent_name.name if agent_name else 'Not found'}"
+                )
 
                 if not agent_name:
                     logging.warning(f"Agent ID {id} not found in the database.")
                     continue
 
                 sheet_name = agent_name.name.replace(" ", "").lower()
-                students = db.query(
-                    models.User.name,
-                    models.User.email,
-                    models.User.phone,
-                    models.User.agent,
-                    models.User.address,
-                    models.User.city,
-                    models.User.state,
-                    models.User.country,
-                    models.User.passport
-                ).filter(models.User.agent.ilike(f'%{agent_name.name}%')).all()
+                students = (
+                    db.query(
+                        models.User.name,
+                        models.User.email,
+                        models.User.phone,
+                        models.User.agent,
+                        models.User.address,
+                        models.User.city,
+                        models.User.state,
+                        models.User.country,
+                        models.User.passport,
+                    )
+                    .filter(models.User.agent.ilike(f"%{agent_name.name}%"))
+                    .all()
+                )
 
-                logging.info(f"Number of students found for agent {sheet_name}: {len(students)}")
+                logging.info(
+                    f"Number of students found for agent {sheet_name}: {len(students)}"
+                )
 
                 if students:
                     flat_data = [student._asdict() for student in students]
@@ -1087,7 +1311,9 @@ async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_
             return StreamingResponse(
                 output,
                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                headers={"Content-Disposition": "attachment; filename=Madhavoverseas_Data.xlsx"}
+                headers={
+                    "Content-Disposition": "attachment; filename=Madhavoverseas_Data.xlsx"
+                },
             )
         else:
             logging.error("No agent IDs provided.")
@@ -1097,12 +1323,210 @@ async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@app.post("/select_commission")
+async def get_comm(
+    commission: schemas.select_commission, db: Session = Depends(get_db)
+):
+
+    final_response = []
+
+    if commission.data:
+        total_amount = 0
+        total_profit = 0
+        total_recieved = 0
+        total_pending =0
+        # Collect all ids to query them in a single batch
+        ids = [each_data["id"] for each_data in commission.data]
+        db_rows = (
+            db.query(models.commission)
+            .filter(models.commission.id.in_(ids))
+            .all()
+        )
+
+        # Create a dictionary to map ids to rows for quick lookup
+        db_row_dict = {row.id: row for row in db_rows}
+
+        for each_data in commission.data:
+            db_row = db_row_dict.get(each_data["id"])
+            if db_row is None:
+                continue  # Skip if the row doesn't exist
+
+            final_amount = db_row.final_amount
+            amount = db_row.pay_fee
+            currency = db_row.currency
+            gst = each_data["gst"]
+            tds = each_data["tds"]
+            com = each_data["commission"]
+            charge = each_data["charges"]
+
+            isPaid = db_row.pay_recieve  
+
+            if isPaid:
+                total_recieved+=float(final_amount)
+                com = float(com)
+                total_profit+=float((com/100)*final_amount)
+
+            else:
+                # Change the currency to INR
+                amount = await currency_convert(currency, amount)            
+
+                amount = float(amount)
+                tds = float(tds)
+                gst = float(gst)
+                com = float(com)
+                charge = float(charge)
+
+                after_gst = amount - ((gst / 100) * amount) if gst > 0 else amount
+                after_tds = after_gst - ((tds / 100) * after_gst) if tds > 0 else after_gst
+                after_charge = after_tds - charge if charge > 0 else after_tds
+                final_amount = after_charge - ((com / 100) * after_charge) if com > 0 else after_charge
+
+                # total_profit += (com / 100) * after_charge if com > 0 else 0
+                db_row.final_amount = round(float(final_amount), 3)
+                total_amount += final_amount
+                total_pending+= final_amount
+            db.commit()  # Commit once after all updates
+            db.refresh(db_row)  # Refresh once after all updates
+
+        return {
+            "status": 200,
+            "data": {
+                "total": round(total_amount, 3),
+                "profit": round(total_profit, 3),
+                "pending": round(total_pending, 3),
+                "recieved": round(total_recieved, 3),
+            },
+            "message": "success",
+        }
+
+    else:
+        db_commissions = db.query(models.commission).all()
+        return {"status": 200, "data": db_commissions, "message": "Success"}
+
+
+# My version
+# @app.post("/select_commission")
+# async def get_comm(
+#     commission: schemas.select_commission, db: Session = Depends(get_db)
+# ):
+
+#     final_response = []
+#     # Selected student
+#     if commission.data:
+#         total_amount = 0
+#         total_profit = 0
+#         for each_data in commission.data:
+#             db_row = (
+#                 db.query(models.commission)
+#                 .filter(models.commission.id == each_data["id"])
+#                 .first()
+#             )
+
+#             final_amount = db_row.final_amount
+
+#             # Amount with calculated yearly fee with scholarship
+#             amount = db_row.pay_fee
+#             currency = db_row.currency
+
+#             # Change the currency to INR
+#             amount = await currency_convert(currency, amount)
+
+#             gst = db_row.gst = each_data["gst"]
+#             tds = db_row.tds = each_data["tds"]
+#             com = db_row.gain_commission = each_data["commission"]
+#             charge = db_row.charges = each_data["charges"]
+
+#             total_amount = final_amount = float(final_amount)
+#             amount = float(amount)
+#             tds = float(tds)
+#             gst = float(gst)
+#             com = float(com)
+#             charge = float(charge)
+
+#             if gst > 0:
+#                 percent = (gst / 100) * amount
+
+#                 after_gst = amount - percent
+
+
+#             if tds > 0:
+#                 percent = (tds / 100) * after_gst
+
+#                 # question?
+#                 # after_tds = amount - percent
+#                 after_tds = after_gst - percent
+
+
+#             if charge > 0:
+
+#                 after_charge = after_tds - charge
+#             if com > 0:
+
+#                 percent = (com / 100) * after_charge
+#                 percent = 0.1 * after_charge
+
+#                 total_profit += float(percent)
+
+#                 final_amount = after_charge - percent
+
+#             db_row.final_amount = round(float(final_amount),3)
+
+#             # storing values
+#             total_amount += final_amount
+
+#             db.commit()
+#             db.refresh(db_row)
+
+#         return {
+#             "status": 200,
+#             "data": [{"total": round(total_amount,3), "profit": round(total_profit,3)}],
+#             "message": "success",
+#         }
+
+#     else:
+
+#         db_commissions = db.query(models.commission).all()
+
+#         return {"status": 200, "data": db_commissions, "message": "Success"}
 
 
 @app.post("/commission_get")
-async def get_comm(commission=schemas.commission_get,db: Session = Depends(get_db)):
+async def get_comm(commission: schemas.commission_get, db: Session = Depends(get_db)):
     app_data = []
-    db_commissions=db.query(models.commission).all()
-    app_data.append(db_commissions)
-    return {'status': 200, 'data':db_commissions,
-            'message': 'Success'}
+
+    # Selected agent
+    if commission.agent_ids:
+        response2 = []
+        for agent in commission.agent_ids:
+            db_commissions = (
+                db.query(models.commission)
+                .filter(models.commission.agent_id == agent)
+                .all()
+            )
+            response2.append(db_commissions)
+        response2 = [data for row in response2 for data in row]
+        return {"status": 200, "data": response2, "message": "Success"}
+
+    # Checking the filter
+    if commission.paid_status == 0 or commission.paid_status == 1:
+        if commission.paid_status == 1:
+            db_commissions = (
+                db.query(models.commission)
+                .filter(models.commission.pay_recieve == 1)
+                .all()
+            )
+            return {"status": 200, "data": db_commissions, "message": "Success"}
+        else:
+            db_commissions = (
+                db.query(models.commission)
+                .filter(models.commission.pay_recieve == 0)
+                .all()
+            )
+            return {"status": 200, "data": db_commissions, "message": "Success"}
+
+    # if filter is not selected
+    else:
+
+        db_commissions = db.query(models.commission).all()
+        app_data.append(db_commissions)
+        return {"status": 200, "data": db_commissions, "message": "Success"}
