@@ -241,13 +241,22 @@ async def app_status_update(
         app_data.append(db_agent)
         appli = app_data[0].id
         student = app_data[0].student_name
+        currency = app_data[0].curr
         agents = app_data[1].agent
         db_agent_id = (
             db.query(models.agent_data.id)
             .filter(models.agent_data.name == agents)
             .first()
         )
+        db_agent_commission = (
+            db.query(models.agent_data.commission)
+            .filter(models.agent_data.id == db_agent_id.id)
+            .first()
+        )
         app_data.append(db_agent_id)
+        app_data.append(db_agent_commission)
+        
+        
         agent_id = app_data[2].id
         curr = app_data[0].curr
         yearly_fee = app_data[0].yearly_fee
@@ -263,8 +272,15 @@ async def app_status_update(
         charges = "0"
         tds = "0"
         gst = "0"
-        gain_commission = "0"
-        final_amount = round(float(fee_paying), 3)
+        gain_commission =app_data[3].commission
+        
+        amount = await currency_convert(currency, fee_paying) 
+        print(amount)
+        print(float(gain_commission)/100)
+        new_amount = amount - (float(gain_commission)/100)*float(amount)
+        print(new_amount)
+        final_amount = round(float(new_amount), 3)
+        print(final_amount)
         db_commission = models.commission(
             application_id=appli,
             Student_name=student,
@@ -1323,12 +1339,13 @@ async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+
 @app.post("/select_commission")
 async def get_comm(
     commission: schemas.select_commission, db: Session = Depends(get_db)
 ):
 
-    final_response = []
+    
 
     if commission.data:
         total_amount = 0
@@ -1365,6 +1382,7 @@ async def get_comm(
                 total_recieved+=float(final_amount)
                 com = float(com)
                 total_profit+=float((com/100)*final_amount)
+                total_amount += final_amount
 
             else:
                 # Change the currency to INR
@@ -1403,6 +1421,26 @@ async def get_comm(
         db_commissions = db.query(models.commission).all()
         return {"status": 200, "data": db_commissions, "message": "Success"}
 
+
+@app.post("/change_fee_status")
+async def get_comm(id: int, password: str, db: Session = Depends(get_db)):
+    stored_password = 2621
+    
+    db_commissions = db.query(models.commission).filter(models.commission.id == id).first()
+    if db_commissions.pay_recieve == 0:
+        if password == stored_password:
+            db_commissions.pay_recieve = 1
+        else:
+            data = {"message": "Incorrect password!", "data": "Unauthorized"}
+            return JSONResponse(status_code=401, content=data)
+        
+        db.commit()  
+        db.refresh(db_commissions)
+        return {"status": 200, "data": "Success", "message": "Success"}
+    else:
+        data = {"message": "already paid", "data": "already paid"}
+        return JSONResponse(status_code=409, content=data)
+    
 
 # My version
 # @app.post("/select_commission")
