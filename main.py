@@ -261,26 +261,26 @@ async def app_status_update(
         curr = app_data[0].curr
         yearly_fee = app_data[0].yearly_fee
         scholarship = app_data[0].scholarship
+        scholarship2 = float(scholarship)/100
         fee_paying = str(
             round(
                 float(
-                    float(yearly_fee) - ((float(yearly_fee) / 100) * float(scholarship))
-                ),
-                3,
+                   (float(yearly_fee)  * scholarship2)
+                )
+                
             )
         )
+        
+        
+        #  1000 - (1000 * 50.85/100)
         charges = "0"
-        tds = "0"
+        tds = "5"
         gst = "0"
         gain_commission =app_data[3].commission
+        after_com =  float(fee_paying) - (float(gain_commission)/100) * float(fee_paying)
         
-        amount = await currency_convert(currency, fee_paying) 
-        print(amount)
-        print(float(gain_commission)/100)
-        new_amount = amount - (float(gain_commission)/100)*float(amount)
-        print(new_amount)
-        final_amount = round(float(new_amount), 3)
-        print(final_amount)
+        final_amount = after_com 
+
         db_commission = models.commission(
             application_id=appli,
             Student_name=student,
@@ -1344,9 +1344,7 @@ async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_
 async def get_comm(
     commission: schemas.select_commission, db: Session = Depends(get_db)
 ):
-
     
-
     if commission.data:
         total_amount = 0
         total_profit = 0
@@ -1371,36 +1369,60 @@ async def get_comm(
             final_amount = db_row.final_amount
             amount = db_row.pay_fee
             currency = db_row.currency
-            gst = each_data["gst"]
-            tds = each_data["tds"]
-            com = each_data["commission"]
-            charge = each_data["charges"]
+            current_rate = db_row.rate
+            com = db_row.gain_commission
+            
+            if commission.action:
+                
+                gst = each_data["gst"]
+                
+                tds = each_data["tds"]
+                com = each_data["commission"]
+                charge = each_data["charges"]
 
+                db_row.charges = charge
+                db_row.gain_commission = com   
+                db_row.tds = tds
+                db_row.gst = gst
+                
             isPaid = db_row.pay_recieve  
 
             if isPaid:
                 total_recieved+=float(final_amount)
                 com = float(com)
-                total_profit+=float((com/100)*final_amount)
+
+                total_profit+=float((float(com/100))*final_amount)
+                print(total_profit)
                 total_amount += final_amount
 
             else:
                 # Change the currency to INR
-                amount = await currency_convert(currency, amount)            
-
-                amount = float(amount)
-                tds = float(tds)
-                gst = float(gst)
-                com = float(com)
-                charge = float(charge)
-
-                after_gst = amount - ((gst / 100) * amount) if gst > 0 else amount
-                after_tds = after_gst - ((tds / 100) * after_gst) if tds > 0 else after_gst
-                after_charge = after_tds - charge if charge > 0 else after_tds
-                final_amount = after_charge - ((com / 100) * after_charge) if com > 0 else after_charge
-
+                if commission.action:
+                    current_rate = float(current_rate) if current_rate else 1
+                    amount = round(float(amount))
+                    
+                    tds = float(tds)
+                    gst = float(gst)
+                    com = float(com)
+                    charge = float(charge)
+                    if tds < 0  or gst < 0 or com< 0  or charge <0:
+                        data = {"message": "Incorrect input", "data": "invalid"}
+                        return JSONResponse(status_code=403, content=data)
+                        
+                    # print(amount)
+                    com_amount = amount*(com/100)
+                    print("Amount",amount)
+                    print("com ",com_amount)
+                    after_charge = (com_amount - charge)*current_rate if charge > 0 else com_amount*current_rate
+                    print("com_INR",after_charge)
+                    after_tds =  ((tds / 100) * after_charge)  if tds > 0 else after_charge
+                    print("TDS",after_tds)
+                    after_gst = after_tds - ((gst / 100) * after_tds) if gst > 0 else  0
+                    print("GST",after_gst)
+                    final_amount = after_charge -after_tds -after_gst
+                    print(final_amount)
                 # total_profit += (com / 100) * after_charge if com > 0 else 0
-                db_row.final_amount = round(float(final_amount), 3)
+                    db_row.final_amount = round(float(final_amount), 3)
                 total_amount += final_amount
                 total_pending+= final_amount
             db.commit()  # Commit once after all updates
@@ -1423,17 +1445,17 @@ async def get_comm(
 
 
 @app.post("/change_fee_status")
-async def get_comm(id: int, password: str, db: Session = Depends(get_db)):
-    stored_password = 2621
+async def get_comm(pay_data:schemas.change_status_fee, db: Session = Depends(get_db)):
+    stored_password = "2621"
     
-    db_commissions = db.query(models.commission).filter(models.commission.id == id).first()
+    db_commissions = db.query(models.commission).filter(models.commission.id == pay_data.id).first()
     if db_commissions.pay_recieve == 0:
-        if password == stored_password:
+        if pay_data.password == stored_password:
             db_commissions.pay_recieve = 1
         else:
             data = {"message": "Incorrect password!", "data": "Unauthorized"}
             return JSONResponse(status_code=401, content=data)
-        
+        db_commissions.pay_recieve =1
         db.commit()  
         db.refresh(db_commissions)
         return {"status": 200, "data": "Success", "message": "Success"}
@@ -1441,91 +1463,6 @@ async def get_comm(id: int, password: str, db: Session = Depends(get_db)):
         data = {"message": "already paid", "data": "already paid"}
         return JSONResponse(status_code=409, content=data)
     
-
-# My version
-# @app.post("/select_commission")
-# async def get_comm(
-#     commission: schemas.select_commission, db: Session = Depends(get_db)
-# ):
-
-#     final_response = []
-#     # Selected student
-#     if commission.data:
-#         total_amount = 0
-#         total_profit = 0
-#         for each_data in commission.data:
-#             db_row = (
-#                 db.query(models.commission)
-#                 .filter(models.commission.id == each_data["id"])
-#                 .first()
-#             )
-
-#             final_amount = db_row.final_amount
-
-#             # Amount with calculated yearly fee with scholarship
-#             amount = db_row.pay_fee
-#             currency = db_row.currency
-
-#             # Change the currency to INR
-#             amount = await currency_convert(currency, amount)
-
-#             gst = db_row.gst = each_data["gst"]
-#             tds = db_row.tds = each_data["tds"]
-#             com = db_row.gain_commission = each_data["commission"]
-#             charge = db_row.charges = each_data["charges"]
-
-#             total_amount = final_amount = float(final_amount)
-#             amount = float(amount)
-#             tds = float(tds)
-#             gst = float(gst)
-#             com = float(com)
-#             charge = float(charge)
-
-#             if gst > 0:
-#                 percent = (gst / 100) * amount
-
-#                 after_gst = amount - percent
-
-
-#             if tds > 0:
-#                 percent = (tds / 100) * after_gst
-
-#                 # question?
-#                 # after_tds = amount - percent
-#                 after_tds = after_gst - percent
-
-
-#             if charge > 0:
-
-#                 after_charge = after_tds - charge
-#             if com > 0:
-
-#                 percent = (com / 100) * after_charge
-#                 percent = 0.1 * after_charge
-
-#                 total_profit += float(percent)
-
-#                 final_amount = after_charge - percent
-
-#             db_row.final_amount = round(float(final_amount),3)
-
-#             # storing values
-#             total_amount += final_amount
-
-#             db.commit()
-#             db.refresh(db_row)
-
-#         return {
-#             "status": 200,
-#             "data": [{"total": round(total_amount,3), "profit": round(total_profit,3)}],
-#             "message": "success",
-#         }
-
-#     else:
-
-#         db_commissions = db.query(models.commission).all()
-
-#         return {"status": 200, "data": db_commissions, "message": "Success"}
 
 
 @app.post("/commission_get")

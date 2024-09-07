@@ -127,6 +127,8 @@ class commission_get(BaseModel):
     
 class select_commission(BaseModel):
     data:Optional[List[dict]]=None
+    action:bool = Field(None)
     
 class change_status_fee(BaseModel):
-    id:int = Field(None)
+    id:int
+    password: str

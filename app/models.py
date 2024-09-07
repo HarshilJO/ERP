@@ -63,7 +63,7 @@ class commission(Base):
     charges=Column(String)
     tds=Column(String)
     gst=Column(String)
-    #this is nothing
+    rate = Column(String)
     gain_commission=Column(String)
     final_amount=Column(Integer)
     pay_recieve=Column(Integer)
