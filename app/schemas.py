@@ -132,3 +132,17 @@ class select_commission(BaseModel):
 class change_status_fee(BaseModel):
     id:int
     password: str
+    
+class expense(BaseModel):
+    description : str
+    category : str
+    sub_category : str
+    cost : str
+    log_by : str
+    date : str
+    expendature :int
+
+class getExpenses(BaseModel):
+    data:Optional[List[dict]]=None
+
+    status:Optional[int ] = Field(None)

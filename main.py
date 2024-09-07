@@ -1505,3 +1505,34 @@ async def get_comm(commission: schemas.commission_get, db: Session = Depends(get
         db_commissions = db.query(models.commission).all()
         app_data.append(db_commissions)
         return {"status": 200, "data": db_commissions, "message": "Success"}
+
+
+@app.post("/expense")
+async def post_expense(expenses: schemas.expense, db: Session = Depends(get_db)):
+    db_expense  = models.Expense(
+    description = expenses.description,
+    category = expenses.category,
+    sub_category = expenses.sub_category,
+    cost= expenses.cost,
+    log_by= expenses.log_by,
+    date= expenses.date,
+    expendature= expenses.expendature
+    )
+    db.add(db_expense)
+    db.commit()
+    db.refresh(db_expense)
+    
+    return { 'status':200,'data':'Success','message':'Transaction added successfully!'}
+
+@app.post("/get_expense")
+async def get_expense(fil:schemas.getExpenses,db: Session = Depends(get_db)):
+    if fil.data:
+        print("WOW")
+    else:    
+        db_expenses = db.query(models.Expense).all()
+        return { 'status':200,'data':db_expenses,'message':'success'}
+    
+    
+    
+    
+    

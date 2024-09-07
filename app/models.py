@@ -131,3 +131,15 @@ class CourseName(Base):
     ielts = Column(String)
     pte = Column(String)
 
+class Expense(Base):
+    __tablename__ = "expenses"
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    description = Column(String)
+    category = Column(String)
+    sub_category = Column(String)
+    cost = Column(String)
+    log_by = Column(String)
+    date = Column(String)
+    expendature = Column(Integer)
+    
+    
