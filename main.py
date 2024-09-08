@@ -255,31 +255,24 @@ async def app_status_update(
         )
         app_data.append(db_agent_id)
         app_data.append(db_agent_commission)
-        
-        
+
         agent_id = app_data[2].id
         curr = app_data[0].curr
         yearly_fee = app_data[0].yearly_fee
         scholarship = app_data[0].scholarship
-        scholarship2 = float(scholarship)/100
-        fee_paying = str(
-            round(
-                float(
-                   (float(yearly_fee)  * scholarship2)
-                )
-                
-            )
-        )
-        
-        
+        scholarship2 = float(scholarship) / 100
+        fee_paying = str(round(float((float(yearly_fee) * scholarship2))))
+
         #  1000 - (1000 * 50.85/100)
         charges = "0"
         tds = "5"
         gst = "0"
-        gain_commission =app_data[3].commission
-        after_com =  float(fee_paying) - (float(gain_commission)/100) * float(fee_paying)
-        
-        final_amount = after_com 
+        gain_commission = app_data[3].commission
+        after_com = float(fee_paying) - (float(gain_commission) / 100) * float(
+            fee_paying
+        )
+
+        final_amount = after_com
 
         db_commission = models.commission(
             application_id=appli,
@@ -1339,23 +1332,20 @@ async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-
 @app.post("/select_commission")
 async def get_comm(
     commission: schemas.select_commission, db: Session = Depends(get_db)
 ):
-    
+
     if commission.data:
         total_amount = 0
         total_profit = 0
         total_recieved = 0
-        total_pending =0
+        total_pending = 0
         # Collect all ids to query them in a single batch
         ids = [each_data["id"] for each_data in commission.data]
         db_rows = (
-            db.query(models.commission)
-            .filter(models.commission.id.in_(ids))
-            .all()
+            db.query(models.commission).filter(models.commission.id.in_(ids)).all()
         )
 
         # Create a dictionary to map ids to rows for quick lookup
@@ -1371,27 +1361,27 @@ async def get_comm(
             currency = db_row.currency
             current_rate = db_row.rate
             com = db_row.gain_commission
-            
+
             if commission.action:
-                
+
                 gst = each_data["gst"]
-                
+
                 tds = each_data["tds"]
                 com = each_data["commission"]
                 charge = each_data["charges"]
 
                 db_row.charges = charge
-                db_row.gain_commission = com   
+                db_row.gain_commission = com
                 db_row.tds = tds
                 db_row.gst = gst
-                
-            isPaid = db_row.pay_recieve  
+
+            isPaid = db_row.pay_recieve
 
             if isPaid:
-                total_recieved+=float(final_amount)
+                total_recieved += float(final_amount)
                 com = float(com)
 
-                total_profit+=float((float(com/100))*final_amount)
+                total_profit += float((float(com / 100)) * final_amount)
                 print(total_profit)
                 total_amount += final_amount
 
@@ -1400,31 +1390,37 @@ async def get_comm(
                 if commission.action:
                     current_rate = float(current_rate) if current_rate else 1
                     amount = round(float(amount))
-                    
+
                     tds = float(tds)
                     gst = float(gst)
                     com = float(com)
                     charge = float(charge)
-                    if tds < 0  or gst < 0 or com< 0  or charge <0:
+                    if tds < 0 or gst < 0 or com < 0 or charge < 0:
                         data = {"message": "Incorrect input", "data": "invalid"}
                         return JSONResponse(status_code=403, content=data)
-                        
+
                     # print(amount)
-                    com_amount = amount*(com/100)
-                    print("Amount",amount)
-                    print("com ",com_amount)
-                    after_charge = (com_amount - charge)*current_rate if charge > 0 else com_amount*current_rate
-                    print("com_INR",after_charge)
-                    after_tds =  ((tds / 100) * after_charge)  if tds > 0 else after_charge
-                    print("TDS",after_tds)
-                    after_gst = after_tds - ((gst / 100) * after_tds) if gst > 0 else  0
-                    print("GST",after_gst)
-                    final_amount = after_charge -after_tds -after_gst
+                    com_amount = amount * (com / 100)
+                    print("Amount", amount)
+                    print("com ", com_amount)
+                    after_charge = (
+                        (com_amount - charge) * current_rate
+                        if charge > 0
+                        else com_amount * current_rate
+                    )
+                    print("com_INR", after_charge)
+                    after_tds = (
+                        ((tds / 100) * after_charge) if tds > 0 else after_charge
+                    )
+                    print("TDS", after_tds)
+                    after_gst = after_tds - ((gst / 100) * after_tds) if gst > 0 else 0
+                    print("GST", after_gst)
+                    final_amount = after_charge - after_tds - after_gst
                     print(final_amount)
-                # total_profit += (com / 100) * after_charge if com > 0 else 0
+                    # total_profit += (com / 100) * after_charge if com > 0 else 0
                     db_row.final_amount = round(float(final_amount), 3)
                 total_amount += final_amount
-                total_pending+= final_amount
+                total_pending += final_amount
             db.commit()  # Commit once after all updates
             db.refresh(db_row)  # Refresh once after all updates
 
@@ -1445,24 +1441,25 @@ async def get_comm(
 
 
 @app.post("/change_fee_status")
-async def get_comm(pay_data:schemas.change_status_fee, db: Session = Depends(get_db)):
+async def get_comm(pay_data: schemas.change_status_fee, db: Session = Depends(get_db)):
     stored_password = "2621"
-    
-    db_commissions = db.query(models.commission).filter(models.commission.id == pay_data.id).first()
+
+    db_commissions = (
+        db.query(models.commission).filter(models.commission.id == pay_data.id).first()
+    )
     if db_commissions.pay_recieve == 0:
         if pay_data.password == stored_password:
             db_commissions.pay_recieve = 1
         else:
             data = {"message": "Incorrect password!", "data": "Unauthorized"}
             return JSONResponse(status_code=401, content=data)
-        db_commissions.pay_recieve =1
-        db.commit()  
+        db_commissions.pay_recieve = 1
+        db.commit()
         db.refresh(db_commissions)
         return {"status": 200, "data": "Success", "message": "Success"}
     else:
         data = {"message": "already paid", "data": "already paid"}
         return JSONResponse(status_code=409, content=data)
-    
 
 
 @app.post("/commission_get")
@@ -1508,31 +1505,35 @@ async def get_comm(commission: schemas.commission_get, db: Session = Depends(get
 
 
 @app.post("/expense")
-async def post_expense(expenses: schemas.expense, db: Session = Depends(get_db)):
-    db_expense  = models.Expense(
-    description = expenses.description,
-    category = expenses.category,
-    sub_category = expenses.sub_category,
-    cost= expenses.cost,
-    log_by= expenses.log_by,
-    date= expenses.date,
-    expendature= expenses.expendature
+async def post_expense(
+    expenses: schemas.expense, request: Request, db: Session = Depends(get_db)
+):
+    role_name = await get_role_from_token(request)
+    db_expense = models.Expense(
+        description=expenses.description,
+        category=expenses.category,
+        sub_category=expenses.sub_category,
+        cost=expenses.cost,
+        log_by=role_name,
+        date=expenses.date,
+        expendature=expenses.expendature,
     )
     db.add(db_expense)
     db.commit()
     db.refresh(db_expense)
-    
-    return { 'status':200,'data':'Success','message':'Transaction added successfully!'}
+
+    return {
+        "status": 200,
+        "data": "Success",
+        "message": "Transaction added successfully!",
+    }
+
 
 @app.post("/get_expense")
-async def get_expense(fil:schemas.getExpenses,db: Session = Depends(get_db)):
+async def get_expense(fil: schemas.getExpenses, db: Session = Depends(get_db)):
     if fil.data:
-        print("WOW")
-    else:    
+        
+        print()
+    else:
         db_expenses = db.query(models.Expense).all()
-        return { 'status':200,'data':db_expenses,'message':'success'}
-    
-    
-    
-    
-    
+        return {"status": 200, "data": db_expenses, "message": "success"}

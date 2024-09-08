@@ -138,11 +138,11 @@ class expense(BaseModel):
     category : str
     sub_category : str
     cost : str
-    log_by : str
     date : str
     expendature :int
 
 class getExpenses(BaseModel):
     data:Optional[List[dict]]=None
 
+    # Expendature
     status:Optional[int ] = Field(None)
