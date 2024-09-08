@@ -144,15 +144,19 @@ class Expense(Base):
     date = Column(String)
     expendature = Column(Integer)
     
-class category(Base):
-    __tablename__="category"
-    id=Column(Integer, primary_key=True, index=True, autoincrement=True)
-    category_name=Column(String)
-    category = relationship("category", back_populates="sub_category")
+class Category(Base):
+    __tablename__ = "category"
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    category_name = Column(String)
+    
+    # Relationship to CategorySub
+    sub_categories = relationship("CategorySub", back_populates="category")
 
-class category_sub(Base):
-    __tablename__="category_sub"
-    id=Column(Integer, primary_key=True, index=True, autoincrement=True)
+class CategorySub(Base):
+    __tablename__ = "category_sub"
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     category_id = Column(Integer, ForeignKey('category.id'))
-    category= relationship("sub_category", back_populates="category",foreign_keys=[category.id])
-    sub_category=Column(String)
+    sub_category_name = Column(String)
+    
+    # Relationship to Category
+    category = relationship("Category", back_populates="sub_categories")
