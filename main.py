@@ -1532,14 +1532,46 @@ async def post_expense(
         "message": "Transaction added successfully!",
     }
 
+@app.get("/get_category")
+async def getCategory(id: Optional[int] = Query(None), db: Session = Depends(get_db)):
+    
+    db_category = db.query(models.Category).all()
+    db_sub = db.query(models.CategorySub).filter(models.CategorySub.category_id == id).all()
+    return {'status':200,'data':{'category':db_category,'sub_category':db_sub},'message':'success'}
 
 @app.post("/get_expense")
 async def get_expense(fil: schemas.getExpenses, db: Session = Depends(get_db)):
 
-    if fil.search or fil.category_ids or fil.sub_category_ids or fil.status:
+
+    # card values
+    netTotal = 0.0
+    income_ = 0.0
+    expense_ = 0.0
+    db_income = db.query(models.Expense.cost).filter(models.Expense.expendature == 1).all()
+    db_expense = db.query(models.Expense.cost).filter(models.Expense.expendature == 0).all()
+    if db_income:
+            income = [round(float(item[0]),3) for item in db_income]
+            for cost in income:
+                income_+=cost
+                netTotal+=cost
+    if db_expense:
+            expense = [round(float(item[0]),3) for item in db_expense]
+            for cost in expense:
+                netTotal+=cost
+                expense_+=cost
+
+    if fil.search or fil.category_ids or fil.sub_category_ids or fil.status==1 or fil.status ==0 :
         
         common_ids = []
-
+        status_ids = []
+        if fil.status == 0 or fil.status == 1:
+            db_query = db.query(models.Expense.id).filter(models.Expense.expendature == fil.status).all()
+            status_ids.append(db_query)
+            
+            flatten = [item for row in status_ids for item in row]
+            status_ids = [item[0] for item in flatten]
+            
+            
         if fil.category_ids:
             
             ids = fil.category_ids
@@ -1547,92 +1579,161 @@ async def get_expense(fil: schemas.getExpenses, db: Session = Depends(get_db)):
             for id in ids:
                 db_query = db.query(models.Expense.id).filter(models.Expense.category_id == id).all()
                 common_ids.append(db_query)
+            flatten = [item for row in common_ids for item in row]
+            common_ids = [item[0] for item in flatten]
+            common_ids = list(set(common_ids))
 
         if fil.sub_category_ids:
-            
+            sub  = []
             sub_ids =  fil.sub_category_ids
             # getting ids in sub_category
             for id in sub_ids:
                 db_query =  db.query(models.Expense.id).filter(models.Expense.sub_category_id == id).all()
-                common_ids.append(db_query)
+                sub.append(db_query)
+            flatten = [item for row in sub for item in row]
+            sub = [item[0] for item in flatten]
+            sub = list(set(sub))
+            
+           
+            
+            if common_ids:
+               
+                common_ids= list(set(common_ids).intersection(set(sub)))
+            else:
+                common_ids = common_ids+sub
+                
+                            
+                
 
         if fil.search:
-            pattern = fil.search.lower().replace(" ","")
-           
-            if fil.status ==0 or fil.status == 1:
-                resp= []
-                
-                db_search = db.query(models.Expense).filter(
-                    func.trim(models.Expense.category).ilike(f"%{pattern}%")
-                    | func.trim(models.Expense.sub_category).ilike(f"%{pattern}%")
-                    | func.trim(models.Expense.description).ilike(f"%{pattern}%")
-                ).all()
-                
-                for row in db_search:
-                    if row.expendature == fil.status:
-                        resp.append(row)
+            pattern = fil.search.lower().replace(" ","")    
+            if not common_ids and not status_ids :
                     
-                return {'status':200,'data':resp,'message':'success'}
-                
-               
-                
-            elif not common_ids :
-
                     db_search = db.query(models.Expense).filter(
                     func.trim(models.Expense.category).ilike(f"%{pattern}%")
                     | func.trim(models.Expense.sub_category).ilike(f"%{pattern}%")
                     | func.trim(models.Expense.description).ilike(f"%{pattern}%")
                 ).all()
-                    return {'status':200,'data':db_search,'message':'Success with only search'} 
-                
+                    return {'status':200,'data':{'total':netTotal,'income':income_,'expense':expense_,'content':db_search},'message':'Success with only search'} 
+             
             else:
-                print("all")
                 res = []
-                searchWithCategory = []
-                for id in common_ids:
-                    db_query = db.query(models.Expense).filter(models.Expense.id == id).first()
-                    res.append(db_query)
+                searchWithCategory = []    
+                if common_ids and status_ids:
+                    
+                    final_ids= list(set(common_ids).intersection(set(status_ids)))
+                    for id in final_ids:
+                        db_query = (
+                            db.query(models.Expense).filter(models.Expense.id == id).first()
+                        )
+                        if db_query:
+                            res.append(db_query)
+                    
+                    for row in res:
+                        desc = row.description.lower().replace(" ","")
+                        category  = row.category.lower().replace(" ","")
+                        sub = row.sub_category.lower().replace(" ","")
+                        if re.search(pattern, desc, re.IGNORECASE) or re.search(
+                                pattern, category, re.IGNORECASE
+                            ) or re.search(pattern,sub,re.IGNORECASE):
+                            searchWithCategory.append(row)
 
-                for row in res:
-                    desc = row.description.lower().replace(" ","")
-                    category  = row.category.lower().replace(" ","")
-                    sub = row.sub_category.lower().replace(" ","")
-                    if re.search(pattern, desc, re.IGNORECASE) or re.search(
-                            pattern, category, re.IGNORECASE
-                        ) or re.search(pattern,sub,re.IGNORECASE):
-                        searchWithCategory.append(row)
-
-                return {'status':200,'data':searchWithCategory,'message':'success3'}
-
-        if common_ids:
-            flatten = [item for row in common_ids for item in row]
-            common_ids = [item[0] for item in flatten]
-
-            common_ids = list(set(common_ids))
-            res = []
-            if fil.status==0 or fil.status == 1:
-                for id in common_ids:
-                    print(id)
-                    db_query = (
-                        db.query(models.Expense).filter(and_(models.Expense.id == id , models.Expense.expendature == fil.status)).first()
-                    )
-                    if db_query:
+                    return {'status':200,'data':{'total':netTotal,'income':income_,'expense':expense_,'content':searchWithCategory},'message':'success3'}
+                
+                if common_ids:
+                    
+                    for id in common_ids:
+                        db_query = db.query(models.Expense).filter(models.Expense.id == id).first()
                         res.append(db_query)
-                return {'status':200,'data':res,'message':'success'}
-            else:
-                for id in common_ids:
 
+                    for row in res:
+                        desc = row.description.lower().replace(" ","")
+                        category  = row.category.lower().replace(" ","")
+                        sub = row.sub_category.lower().replace(" ","")
+                        if re.search(pattern, desc, re.IGNORECASE) or re.search(
+                                pattern, category, re.IGNORECASE
+                            ) or re.search(pattern,sub,re.IGNORECASE):
+                            searchWithCategory.append(row)
+
+                    return {'status':200,'data':{'total':netTotal,'income':income_,'expense':expense_,'content':searchWithCategory},'message':'success'}
+                
+                if status_ids:
+                    
+                    
+                    for id in status_ids:
+                        db_query = db.query(models.Expense).filter(models.Expense.id == id).first()
+                        res.append(db_query)
+                    for row in res:
+                        desc = row.description.lower().replace(" ","")
+                        category  = row.category.lower().replace(" ","")
+                        sub = row.sub_category.lower().replace(" ","")
+                        if re.search(pattern, desc, re.IGNORECASE) or re.search(
+                                pattern, category, re.IGNORECASE
+                            ) or re.search(pattern,sub,re.IGNORECASE):
+                            searchWithCategory.append(row)
+
+                    return {'status':200,'data':{'total':netTotal,'income':income_,'expense':expense_,'content':searchWithCategory},'message':'success'}
+
+        if common_ids or status_ids:
+            print(common_ids,status_ids)
+            res = []
+                
+            inco = 0.0        
+            exp = 0.0
+            total = 0.0
+    
+    
+            common_ids = list(set(common_ids))
+            
+            if common_ids and status_ids:
+                print("2")
+                final_ids= list(set(common_ids).intersection(set(status_ids)))
+                
+                for id in final_ids:
+                    db_query = (
+                        db.query(models.Expense).filter(models.Expense.id == id).first()
+                    )
+                    
+                    if db_query:
+                        if db_query.expendature:
+                            inco+=round(float(db_query.cost),3)
+                            total+=round(float(db_query.cost),3)
+                        else:
+                            exp+=round(float(db_query.cost),3)
+                            total+=round(float(db_query.cost),3)
+                        res.append(db_query)
+                return {'status':200,'data':{'total':total,'income':inco,'expense':exp,'content':res},'message':'success'}
+
+            if common_ids:
+                print("3")
+                for id in common_ids:
+                    
                     db_query = (
                         db.query(models.Expense).filter(models.Expense.id == id).first()
                     )
                     if db_query:
                         res.append(db_query)
-                return {'status':200,'data':res,'message':'success'}
-        if fil.status == 0 or fil.status == 1:
-            db_query = db.query(models.Expense).filter(models.Expense.expendature == fil.status).all()
-            return {'status':200,'data':db_query,'message':'success'}
-
+                        if db_query.expendature:
+                            inco+=round(float(db_query.cost),3)
+                            total+=round(float(db_query.cost),3)
+                        else:
+                            exp+=round(float(db_query.cost),3)
+                            total+=round(float(db_query.cost),3)
+                return {'status':200,'data':{'total':total,'income':inco,'expense':exp,'content':res},'message':'success'}
+            
+            if status_ids:
+                
+                db_query = (
+                    db.query(models.Expense).filter(models.Expense.expendature == fil.status).all()
+                )
+                 
+                return {'status':200,'data':{'total':netTotal,'income':income_,'expense':expense_,'content':db_query},'message':'success'}
+        else:
+            return {'status':200,'data':{'total':0.0,'income':0.0,'expense':0.0,'content':[]},'message':'success'}
+                
     else:
-        print("wow")
+    
         db_expenses = db.query(models.Expense).all()
-        return {"status": 200, "data": db_expenses, "message": "success"}
+        return {"status": 200, "data": {'total':netTotal,'income':income_,'expense':expense_,'content':db_expenses}, "message": "success"}
+
+

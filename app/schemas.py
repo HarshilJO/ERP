@@ -147,6 +147,4 @@ class getExpenses(BaseModel):
     category_ids:Optional[List[int]]=None
     sub_category_ids:Optional[List[int]]=None
     search:Optional[str] = Field(None)
-    
-    # Expendature
     status:Optional[int ] = Field(None)
