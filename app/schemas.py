@@ -136,9 +136,7 @@ class change_status_fee(BaseModel):
 class expense(BaseModel):
     description : str
     category_id:int
-    category : str
     sub_category_id:int
-    sub_category : str
     cost : str
     date : str
     expendature :int  # 0 or 1

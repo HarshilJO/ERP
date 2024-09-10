@@ -267,6 +267,7 @@ async def app_status_update(
         charges = "0"
         tds = "5"
         gst = "0"
+        rate = "0"
         gain_commission = app_data[3].commission
         after_com = float(fee_paying) - (float(gain_commission) / 100) * float(
             fee_paying
@@ -286,6 +287,7 @@ async def app_status_update(
             charges=charges,
             tds=tds,
             gst=gst,
+            rate = rate,
             gain_commission=gain_commission,
             final_amount=final_amount,
             pay_recieve=0,
@@ -1365,7 +1367,7 @@ async def get_comm(
             if commission.action:
 
                 gst = each_data["gst"]
-
+                rate = each_data["rate"]
                 tds = each_data["tds"]
                 com = each_data["commission"]
                 charge = each_data["charges"]
@@ -1374,6 +1376,7 @@ async def get_comm(
                 db_row.gain_commission = com
                 db_row.tds = tds
                 db_row.gst = gst
+                db_row.rate = rate
 
             isPaid = db_row.pay_recieve
 
@@ -1382,7 +1385,7 @@ async def get_comm(
                 com = float(com)
 
                 total_profit += float((float(com / 100)) * final_amount)
-                print(total_profit)
+                
                 total_amount += final_amount
 
             else:
@@ -1401,22 +1404,22 @@ async def get_comm(
 
                     # print(amount)
                     com_amount = amount * (com / 100)
-                    print("Amount", amount)
-                    print("com ", com_amount)
+                    
+                    
                     after_charge = (
                         (com_amount - charge) * current_rate
                         if charge > 0
                         else com_amount * current_rate
                     )
-                    print("com_INR", after_charge)
+                    
                     after_tds = (
                         ((tds / 100) * after_charge) if tds > 0 else after_charge
                     )
-                    print("TDS", after_tds)
+                    
                     after_gst = after_tds - ((gst / 100) * after_tds) if gst > 0 else 0
-                    print("GST", after_gst)
+                    
                     final_amount = after_charge - after_tds - after_gst
-                    print(final_amount)
+                    
                     # total_profit += (com / 100) * after_charge if com > 0 else 0
                     db_row.final_amount = round(float(final_amount), 3)
                 total_amount += final_amount
@@ -1509,14 +1512,20 @@ async def post_expense(
     expenses: schemas.expense, request: Request, db: Session = Depends(get_db)
 ):
     role_name = await get_role_from_token(request)
+    cid =  expenses.category_id
+    db_category = db.query(models.Category.category_name).filter(models.Category.id == cid).first()
+    sid = expenses.sub_category_id
+    db_sub = db.query(models.CategorySub.sub_category_name).filter(models.CategorySub.id == sid).first()
+    sub_category = db_sub[0]
+    category = db_category[0]
     
     
     db_expense = models.Expense(
         description=expenses.description,
-        category=expenses.category,
+        category=category,
         category_id = expenses.category_id,
         sub_category_id  = expenses.sub_category_id,
-        sub_category=expenses.sub_category,
+        sub_category=sub_category,
         cost=expenses.cost,
         log_by=role_name,
         date=expenses.date,
@@ -1555,6 +1564,7 @@ async def get_expense(fil: schemas.getExpenses, db: Session = Depends(get_db)):
                 income_+=cost
                 netTotal+=cost
     if db_expense:
+            
             expense = [round(float(item[0]),3) for item in db_expense]
             for cost in expense:
                 netTotal+=cost
