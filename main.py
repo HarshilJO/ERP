@@ -922,7 +922,7 @@ async def CU_Applications(
                     "message": "Application details updated",
                 }
             else:
-                print("Update Error")
+                
                 data = {"message": "Not Found", "data": "Not found"}
                 return JSONResponse(status_code=404, content=data)
         else:
@@ -1367,7 +1367,7 @@ async def get_comm(
             if commission.action:
 
                 gst = each_data["gst"]
-                rate = each_data["rate"]
+                current_rate = each_data["rate"]
                 tds = each_data["tds"]
                 com = each_data["commission"]
                 charge = each_data["charges"]
@@ -1376,7 +1376,7 @@ async def get_comm(
                 db_row.gain_commission = com
                 db_row.tds = tds
                 db_row.gst = gst
-                db_row.rate = rate
+                db_row.rate = current_rate
 
             isPaid = db_row.pay_recieve
 
@@ -1526,7 +1526,7 @@ async def post_expense(
         category_id = expenses.category_id,
         sub_category_id  = expenses.sub_category_id,
         sub_category=sub_category,
-        cost=expenses.cost,
+        cost=int(expenses.cost),
         log_by=role_name,
         date=expenses.date,
         expendature=expenses.expendature,
@@ -1567,7 +1567,7 @@ async def get_expense(fil: schemas.getExpenses, db: Session = Depends(get_db)):
             
             expense = [round(float(item[0]),3) for item in db_expense]
             for cost in expense:
-                netTotal+=cost
+                netTotal-=cost
                 expense_+=cost
 
     if fil.search or fil.category_ids or fil.sub_category_ids or fil.status==1 or fil.status ==0 :
@@ -1685,7 +1685,7 @@ async def get_expense(fil: schemas.getExpenses, db: Session = Depends(get_db)):
                     return {'status':200,'data':{'total':netTotal,'income':income_,'expense':expense_,'content':searchWithCategory},'message':'success'}
 
         if common_ids or status_ids:
-            print(common_ids,status_ids)
+            
             res = []
                 
             inco = 0.0        
@@ -1696,7 +1696,7 @@ async def get_expense(fil: schemas.getExpenses, db: Session = Depends(get_db)):
             common_ids = list(set(common_ids))
             
             if common_ids and status_ids:
-                print("2")
+                
                 final_ids= list(set(common_ids).intersection(set(status_ids)))
                 
                 for id in final_ids:
@@ -1705,17 +1705,19 @@ async def get_expense(fil: schemas.getExpenses, db: Session = Depends(get_db)):
                     )
                     
                     if db_query:
+                        
+                        
                         if db_query.expendature:
                             inco+=round(float(db_query.cost),3)
                             total+=round(float(db_query.cost),3)
                         else:
                             exp+=round(float(db_query.cost),3)
-                            total+=round(float(db_query.cost),3)
+                            total-=round(float(db_query.cost),3)
                         res.append(db_query)
                 return {'status':200,'data':{'total':total,'income':inco,'expense':exp,'content':res},'message':'success'}
 
             if common_ids:
-                print("3")
+                
                 for id in common_ids:
                     
                     db_query = (
@@ -1728,7 +1730,7 @@ async def get_expense(fil: schemas.getExpenses, db: Session = Depends(get_db)):
                             total+=round(float(db_query.cost),3)
                         else:
                             exp+=round(float(db_query.cost),3)
-                            total+=round(float(db_query.cost),3)
+                            total-=round(float(db_query.cost),3)
                 return {'status':200,'data':{'total':total,'income':inco,'expense':exp,'content':res},'message':'success'}
             
             if status_ids:
