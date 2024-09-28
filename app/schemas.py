@@ -90,6 +90,7 @@ class Logs(BaseModel):
     details:str
 
 class ApplicationQuery(BaseModel):
+    agent_id:Optional[List[int]] = None
     name: Optional[str] = None
     ids: Optional[List[int]] = None
 
