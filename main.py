@@ -784,79 +784,43 @@ async def get_user(id: int, db: Session = Depends(get_db)):
 
 @app.post("/application_get")
 async def get_all_applications(query: schemas.ApplicationQuery, db: Session = Depends(get_db)):
-    # Filter For agent
-    if query.agent_id:
-        agent_name = []
-        student_id = []
-        finalRes = []
-        for id in query.agent_id:
-            agent =db.query(models.agent_data.name).filter(models.agent_data.id == id).first()
-            agent_name.append(agent.name)
-        
-        application_student = db.query(models.Application.student_id).all()
-     
-        for agent in agent_name:
-            students = db.query(models.User.id).filter(models.User.agent == agent).all()
-            student_id.extend(students)
-            student_id_app = [x[0] for x in application_student]
-            student_id_ = [x[0] for x in student_id]
-        set1 = set(student_id_app)
-        set2 = set(student_id_)
-        common = list(set1.intersection(set2))
-        print(common)
-        for id in common:
-            res = db.query(models.Application).filter(models.Application.student_id == id).all()
-            finalRes.extend(res)
-        if finalRes:
-            return {'status': 200, 'data': finalRes, 'message': 'success'}
-        else:
-             return {'status': 200, 'data': finalRes, 'message': "Not found"}
-
-    logger.info(f"Fetching applications based on query: {query.dict()}")
     try:
-        final_result = []
-        if query.ids and query.name:
-            logger.info(f"Fetching applications by ids: {query.ids} and name: {query.name}")
+        filters = []
+ 
+        # Filter by agent_id
+        if query.agent_id:
+            agent_names = [agent.name for agent_id in query.agent_id for agent in db.query(models.agent_data).filter(models.agent_data.id == agent_id).all()]
+            student_ids = [student.id for agent in agent_names for student in db.query(models.User).filter(models.User.agent == agent).all()]
+            application_student_ids = [app.student_id for app in db.query(models.Application.student_id).all()]
+            common_student_ids = set(student_ids).intersection(application_student_ids)
+            filters.append(models.Application.student_id.in_(common_student_ids))
+ 
+        # Filter by status IDs if provided
+        if query.ids:
+            status_labels = []
             for id in query.ids:
-                for j in statuses:
-                    if id == j["id"]:
-                        final_result.extend(db.query(models.Application).filter(
-                            models.Application.status == j["label"],
-                            models.Application.student_name.ilike(f"%{query.name}%")).all())
-            logger.info(f"Applications fetched by ids and name: {final_result}")
-            return {'status': 200, 'data': final_result, 'message': 'Applications fetched successfully by id and name'}
-
-        elif query.ids:
-            logger.info(f"Fetching applications by ids: {query.ids}")
-            for id in query.ids:
-                for j in statuses:
-                    if id == j["id"]:
-                        final_result.extend(
-                            db.query(models.Application).filter(models.Application.status == j["label"]).all())
-            logger.info(f"Applications fetched by ids: {final_result}")
-            return {'status': 200, 'data': final_result, 'message': 'Applications fetched successfully by id'}
-
-        elif query.name:
-            logger.info(f"Fetching applications by name: {query.name}")
-            agents = db.query(models.Application).filter(models.Application.student_name.ilike(f"%{query.name}%")).all()
-
-            if not agents:
-                logger.info(f"No applications found for name: {query.name}")
-                return {'status': 200, 'data': [], 'message': 'Application not found'}
-            else:
-                logger.info(f"Applications fetched by name: {agents}")
-                return {'status': 200, 'data': agents, 'message': 'Success by name'}
+ 
+                status_labels.append(statuses[id-1]["label"])
+            print(status_labels)
+            if status_labels:
+                filters.append(models.Application.status.in_(status_labels))
+ 
+        # Filter by name if provided
+        if query.name:
+            filters.append(models.Application.student_name.ilike(f"%{query.name}%"))
+ 
+        # Apply filters to the query
+        query_result = db.query(models.Application).filter(*filters).all()
+ 
+        if query_result:
+            return {'status': 200, 'data': query_result, 'message': 'Applications fetched successfully'}
         else:
-            logger.info("Fetching all applications")
-            agents = db.query(models.Application).all()
-            logger.info(f"All applications fetched: {agents}")
-
-        return {'status': 200, 'data': agents, 'message': 'Success all'}
+            return {'status': 200, 'data': [], 'message': "No applications found"}
+ 
     except Exception as e:
         logger.error(f"Error fetching applications: {e}")
         logger.error(traceback.format_exc())  # Logs the full stack trace
         return JSONResponse(status_code=500, content={'message': 'Internal Server Error'})
-
 
 @app.post("/application")
 async def CU_Applications(application: schemas.Application, request: Request, db: Session = Depends(get_db)):
@@ -1200,9 +1164,12 @@ async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_
                 headers={"Content-Disposition": "attachment; filename=Madhavoverseas_Data.xlsx"}
             )
         elif app_id:
+            app_list=[]
+
             for id in app_id:
                 agent_name = db.query(models.Application).filter(models.Application.id == id).first()
                 logging.info(f"Processing agent: {agent_name.student_name if agent_name else 'Not found'}")
+                
 
                 if not agent_name:
                     logging.warning(f"Agent ID {id} not found in the database.")
@@ -1219,18 +1186,26 @@ async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_
                     models.Application.status,
                     models.Application.yearly_fee,
                     models.Application.scholarship,
+                    models.User.agent
                     
-                ).all()
+                ).filter(models.Application.id == id,models.Application.student_id==models.User.id).order_by(models.User.agent).first()
+                app_list.append(students)
+                # print(app_list)
 
                 # logging.info(f"Number of students found for agent {sheet_name}: {len(students)}")
 
-                if students:
-                    flat_data = [student._asdict() for student in students]
+                # if students:
+                #     flat_data = [student._asdict() for student in students]
+                #     df = pd.DataFrame(flat_data)
+                #     df.index += 1
+                #     df.to_excel(writer, index_label="Sr no.")
+
+            print(app_list)
+            if students:
+                    flat_data = [student._asdict() for student in app_list]
                     df = pd.DataFrame(flat_data)
                     df.index += 1
                     df.to_excel(writer, index_label="Sr no.")
-
-            
             writer.close()
 
             output.seek(0)
