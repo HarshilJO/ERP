@@ -1152,8 +1152,10 @@ async def get_uni_drop(db: Session = Depends(get_db)):
 async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_db)):
     try:
         agent_ids = student.agent_id
+        app_id=student.application_id
         output = BytesIO()
         logging.info(f"Agent IDs received: {agent_ids}")
+        
 
         # Create a Pandas Excel writer using XlsxWriter as the engine
         writer = pd.ExcelWriter(output, engine='openpyxl')
@@ -1187,6 +1189,46 @@ async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_
                     df = pd.DataFrame(flat_data)
                     df.index += 1
                     df.to_excel(writer, sheet_name=sheet_name, index_label="Sr no.")
+
+            
+            writer.close()
+
+            output.seek(0)
+            return StreamingResponse(
+                output,
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={"Content-Disposition": "attachment; filename=Madhavoverseas_Data.xlsx"}
+            )
+        elif app_id:
+            for id in app_id:
+                agent_name = db.query(models.Application).filter(models.Application.id == id).first()
+                logging.info(f"Processing agent: {agent_name.student_name if agent_name else 'Not found'}")
+
+                if not agent_name:
+                    logging.warning(f"Agent ID {id} not found in the database.")
+                    continue
+
+                # sheet_name = agent_name..replace(" ", "").lower()
+                students = db.query(
+                    models.Application.student_name,
+                    models.Application.Country,
+                    models.Application.university_name,
+                    models.Application.intake,
+                    models.Application.program_level,
+                    models.Application.program,
+                    models.Application.status,
+                    models.Application.yearly_fee,
+                    models.Application.scholarship,
+                    
+                ).all()
+
+                # logging.info(f"Number of students found for agent {sheet_name}: {len(students)}")
+
+                if students:
+                    flat_data = [student._asdict() for student in students]
+                    df = pd.DataFrame(flat_data)
+                    df.index += 1
+                    df.to_excel(writer, index_label="Sr no.")
 
             
             writer.close()
@@ -1270,74 +1312,74 @@ async def get_uni_drop(db: Session = Depends(get_db)):
     }
 
 
-@app.post("/csv")
-async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_db)):
-    try:
-        agent_ids = student.agent_id
-        output = BytesIO()
-        logging.info(f"Agent IDs received: {agent_ids}")
+# @app.post("/csv")
+# async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_db)):
+#     try:
+#         agent_ids = student.agent_id
+#         output = BytesIO()
+#         logging.info(f"Agent IDs received: {agent_ids}")
 
-        # Create a Pandas Excel writer using XlsxWriter as the engine
-        writer = pd.ExcelWriter(output, engine="openpyxl")
+#         # Create a Pandas Excel writer using XlsxWriter as the engine
+#         writer = pd.ExcelWriter(output, engine="openpyxl")
 
-        if agent_ids:
-            for id in agent_ids:
-                agent_name = (
-                    db.query(models.agent_data)
-                    .filter(models.agent_data.id == id)
-                    .first()
-                )
-                logging.info(
-                    f"Processing agent: {agent_name.name if agent_name else 'Not found'}"
-                )
+#         if agent_ids:
+#             for id in agent_ids:
+#                 agent_name = (
+#                     db.query(models.agent_data)
+#                     .filter(models.agent_data.id == id)
+#                     .first()
+#                 )
+#                 logging.info(
+#                     f"Processing agent: {agent_name.name if agent_name else 'Not found'}"
+#                 )
 
-                if not agent_name:
-                    logging.warning(f"Agent ID {id} not found in the database.")
-                    continue
+#                 if not agent_name:
+#                     logging.warning(f"Agent ID {id} not found in the database.")
+#                     continue
 
-                sheet_name = agent_name.name.replace(" ", "").lower()
-                students = (
-                    db.query(
-                        models.User.name,
-                        models.User.email,
-                        models.User.phone,
-                        models.User.agent,
-                        models.User.address,
-                        models.User.city,
-                        models.User.state,
-                        models.User.country,
-                        models.User.passport,
-                    )
-                    .filter(models.User.agent.ilike(f"%{agent_name.name}%"))
-                    .all()
-                )
+#                 sheet_name = agent_name.name.replace(" ", "").lower()
+#                 students = (
+#                     db.query(
+#                         models.User.name,
+#                         models.User.email,
+#                         models.User.phone,
+#                         models.User.agent,
+#                         models.User.address,
+#                         models.User.city,
+#                         models.User.state,
+#                         models.User.country,
+#                         models.User.passport,
+#                     )
+#                     .filter(models.User.agent.ilike(f"%{agent_name.name}%"))
+#                     .all()
+#                 )
 
-                logging.info(
-                    f"Number of students found for agent {sheet_name}: {len(students)}"
-                )
+#                 logging.info(
+#                     f"Number of students found for agent {sheet_name}: {len(students)}"
+#                 )
 
-                if students:
-                    flat_data = [student._asdict() for student in students]
-                    df = pd.DataFrame(flat_data)
-                    df.index += 1
-                    df.to_excel(writer, sheet_name=sheet_name, index_label="Sr no.")
+#                 if students:
+#                     flat_data = [student._asdict() for student in students]
+#                     df = pd.DataFrame(flat_data)
+#                     df.index += 1
+#                     df.to_excel(writer, sheet_name=sheet_name, index_label="Sr no.")
 
-            writer.close()
+#             writer.close()
 
-            output.seek(0)
-            return StreamingResponse(
-                output,
-                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                headers={
-                    "Content-Disposition": "attachment; filename=Madhavoverseas_Data.xlsx"
-                },
-            )
-        else:
-            logging.error("No agent IDs provided.")
-            raise HTTPException(status_code=400, detail="No agent IDs provided.")
-    except Exception as e:
-        logging.error(f"An error occurred: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+#             output.seek(0)
+#             return StreamingResponse(
+#                 output,
+#                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+#                 headers={
+#                     "Content-Disposition": "attachment; filename=Madhavoverseas_Data.xlsx"
+#                 },
+#             )
+#         else:
+#             logging.error("No agent IDs provided.")
+#             raise HTTPException(status_code=400, detail="No agent IDs provided.")
+#     except Exception as e:
+#         logging.error(f"An error occurred: {str(e)}")
+#         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 
@@ -1386,6 +1428,7 @@ async def get_comm(
                 db_row.rate = current_rate
 
             isPaid = db_row.pay_recieve
+            
 
             if isPaid:
                 total_recieved += float(final_amount)
