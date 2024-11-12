@@ -235,7 +235,7 @@ async def app_status_update(
 
         #  1000 - (1000 * 50.85/100)
         charges = "0"
-        tds = "5"
+        tds = "0"
         gst = "0"
         rate = "0"
         gain_commission = app_data[3].commission
@@ -842,41 +842,71 @@ async def CU_Applications(application: schemas.Application, request: Request, db
 
         rent_time = datetime.utcnow()
         current_time = rent_time.strftime('%Y-%m-%d %H:%M:%S')
-
+        data = load_json("address/countries.json")
+        
+        
         if application.id and application.id > 0:
             logger.info(f"Updating application with id {application.id}")
             db_application = db.query(models.Application).filter(models.Application.id == application.id).first()
+            
+            if not db_application:
+                logger.error(f"Application with id {application.id} not found for update")
+                return JSONResponse(status_code=404, content={'message': "Not Found", 'data': "Not found"})
 
-            if db_application:
-                for key, value in application.dict(exclude_unset=True).items():
-                    setattr(db_application, key, value)
+            # Update currency based on the country in `data`
+            
+           
 
-                new_log = models.Logs(
-                    operation="Updated",
-                    timestamp=get_time(),
-                    details=f"Application updated for <b>{user.name}</b> by <b>{role_name}</b>"
-                )
-                db.add(new_log)
-                db_application.student_name = user.name
-                db_application.timestamp = current_time
+            # Update other fields of `db_application` from `application`
+            for key, value in application.dict(exclude_unset=True).items():
+                setattr(db_application, key, value)
+
+            # Add log entry
+            new_log = models.Logs(
+                operation="Updated",
+                timestamp=get_time(),
+                details=f"Application updated for <b>{user.name}</b> by <b>{role_name}</b>"
+            )
+            db.add(new_log)
+            currency_found = False
+            for con in data:
+                if con["name"] == application.Country:
+                    db_application.curr = con["currency"]
+                    currency_found = True
+                    logger.info(f"Currency for country {application.Country} found: {db_application.curr}")
+                    break  # Exit loop after finding a match
+            if not currency_found:
+                logger.warning(f"No currency found for country {application.Country}, leaving `curr` unchanged.")
+            # Update additional fields
+            db_application.student_name = user.name
+            db_application.timestamp = current_time
+            
+            try:
+                # Commit all changes
                 db.commit()
                 db.refresh(db_application)
                 db.refresh(new_log)
-
-                logger.info(f"Application {application.id} updated successfully")
+                logger.info(f"Application {application.id} updated successfully with currency {db_application.curr}")
                 return {'status': 200, 'data': db_application, 'message': 'Application details updated'}
-            else:
-                logger.error(f"Application with id {application.id} not found for update")
-                data = {'message': "Not Found", 'data': "Not found"}
-                return JSONResponse(status_code=404, content=data)
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Failed to update application with id {application.id}: {e}")
+                return {'status': 500, 'message': 'Failed to update application details'}
+
 
         else:
             logger.info("Creating new application")
             new_application = models.Application(**application.dict(exclude={"id"}))
+           
+            for con in data:
+                if con["name"] == application.Country:
+                    new_application.curr = con["currency"]
+                    
+                    
             new_application.status = "Application Created"
             new_application.student_name = user.name
             new_application.timestamp = current_time
-
+            
             db.add(new_application)
             db.commit()
             db.refresh(new_application)
@@ -1188,7 +1218,7 @@ async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_
                     models.Application.scholarship,
                     models.User.agent
                     
-                ).filter(models.Application.id == id,models.Application.student_id==models.User.id).order_by(models.User.agent).first()
+                ).filter(models.Application.id == id,models.Application.student_id==models.User.id).first()
                 app_list.append(students)
                 # print(app_list)
 
