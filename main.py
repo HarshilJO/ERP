@@ -1142,114 +1142,195 @@ async def get_uni_drop(db: Session = Depends(get_db)):
             'message': 'Success'}
 
 
+# @app.post("/csv")
+# async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_db)):
+#     try:
+#         agent_ids = student.agent_id
+#         app_id=student.application_id
+#         output = BytesIO()
+#         logging.info(f"Agent IDs received: {agent_ids}")
+        
+
+#         # Create a Pandas Excel writer using XlsxWriter as the engine
+#         writer = pd.ExcelWriter(output, engine='openpyxl')
+
+#         if agent_ids:
+#             for id in agent_ids:
+#                 agent_name = db.query(models.agent_data).filter(models.agent_data.id == id).first()
+#                 logging.info(f"Processing agent: {agent_name.name if agent_name else 'Not found'}")
+
+#                 if not agent_name:
+#                     logging.warning(f"Agent ID {id} not found in the database.")
+#                     continue
+
+#                 sheet_name = agent_name.name.replace(" ", "").lower()
+#                 students = db.query(
+#                     models.User.name,
+#                     models.User.email,
+#                     models.User.phone,
+#                     models.User.agent,
+#                     models.User.address,
+#                     models.User.city,
+#                     models.User.state,
+#                     models.User.country,
+#                     models.User.passport
+#                 ).filter(models.User.agent.ilike(f'%{agent_name.name}%')).all()
+
+#                 logging.info(f"Number of students found for agent {sheet_name}: {len(students)}")
+
+#                 if students:
+#                     flat_data = [student._asdict() for student in students]
+#                     df = pd.DataFrame(flat_data)
+#                     df.index += 1
+#                     df.to_excel(writer, sheet_name=sheet_name, index_label="Sr no.")
+
+            
+#             writer.close()
+
+#             output.seek(0)
+#             return StreamingResponse(
+#                 output,
+#                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+#                 headers={"Content-Disposition": "attachment; filename=Madhavoverseas_Data.xlsx"}
+#             )
+#         elif app_id:
+#             app_list=[]
+
+#             for id in app_id:
+#                 agent_name = db.query(models.Application).filter(models.Application.id == id).first()
+#                 logging.info(f"Processing agent: {agent_name.student_name if agent_name else 'Not found'}")
+                
+
+#                 if not agent_name:
+#                     logging.warning(f"Agent ID {id} not found in the database.")
+#                     continue
+
+#                 # sheet_name = agent_name..replace(" ", "").lower()
+#                 students = db.query(
+#                     models.Application.student_name,
+#                     models.Application.Country,
+#                     models.Application.university_name,
+#                     models.Application.intake,
+#                     models.Application.program_level,
+#                     models.Application.program,
+#                     models.Application.status,
+#                     models.Application.yearly_fee,
+#                     models.Application.scholarship,
+#                     models.User.agent
+                    
+#                 ).filter(models.Application.id == id,models.Application.student_id==models.User.id).first()
+#                 app_list.append(students)
+#                 # print(app_list)
+
+#                 # logging.info(f"Number of students found for agent {sheet_name}: {len(students)}")
+
+#                 # if students:
+#                 #     flat_data = [student._asdict() for student in students]
+#                 #     df = pd.DataFrame(flat_data)
+#                 #     df.index += 1
+#                 #     df.to_excel(writer, index_label="Sr no.")
+
+#             print(app_list)
+#             if students:
+#                     flat_data = [student._asdict() for student in app_list]
+#                     df = pd.DataFrame(flat_data)
+#                     df.index += 1
+#                     df.to_excel(writer, index_label="Sr no.")
+#             writer.close()
+
+#             output.seek(0)
+#             return StreamingResponse(
+#                 output,
+#                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+#                 headers={"Content-Disposition": "attachment; filename=Madhavoverseas_Data.xlsx"}
+#             )
+#         else:
+#             logging.error("No agent IDs provided.")
+#             raise HTTPException(status_code=400, detail="No agent IDs provided.")
+#     except Exception as e:
+#         logging.error(f"An error occurred: {str(e)}")
+#         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+#23-12-2024 CSV Update
+
 @app.post("/csv")
 async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_db)):
     try:
         agent_ids = student.agent_id
-        app_id=student.application_id
+        app_ids = student.application_id
         output = BytesIO()
         logging.info(f"Agent IDs received: {agent_ids}")
         
-
-        # Create a Pandas Excel writer using XlsxWriter as the engine
+        # Create an Excel writer
         writer = pd.ExcelWriter(output, engine='openpyxl')
 
         if agent_ids:
-            for id in agent_ids:
-                agent_name = db.query(models.agent_data).filter(models.agent_data.id == id).first()
-                logging.info(f"Processing agent: {agent_name.name if agent_name else 'Not found'}")
-
-                if not agent_name:
-                    logging.warning(f"Agent ID {id} not found in the database.")
-                    continue
-
-                sheet_name = agent_name.name.replace(" ", "").lower()
-                students = db.query(
-                    models.User.name,
-                    models.User.email,
-                    models.User.phone,
-                    models.User.agent,
-                    models.User.address,
-                    models.User.city,
-                    models.User.state,
-                    models.User.country,
-                    models.User.passport
-                ).filter(models.User.agent.ilike(f'%{agent_name.name}%')).all()
-
-                logging.info(f"Number of students found for agent {sheet_name}: {len(students)}")
-
-                if students:
-                    flat_data = [student._asdict() for student in students]
-                    df = pd.DataFrame(flat_data)
-                    df.index += 1
-                    df.to_excel(writer, sheet_name=sheet_name, index_label="Sr no.")
-
-            
-            writer.close()
-
-            output.seek(0)
-            return StreamingResponse(
-                output,
-                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                headers={"Content-Disposition": "attachment; filename=Madhavoverseas_Data.xlsx"}
-            )
-        elif app_id:
-            app_list=[]
-
-            for id in app_id:
-                agent_name = db.query(models.Application).filter(models.Application.id == id).first()
-                logging.info(f"Processing agent: {agent_name.student_name if agent_name else 'Not found'}")
+            for agent_id in agent_ids:
+                agent = db.query(models.agent_data).filter(models.agent_data.id == agent_id).first()
                 
-
-                if not agent_name:
-                    logging.warning(f"Agent ID {id} not found in the database.")
+                if not agent:
+                    logging.warning(f"Agent ID {agent_id} not found.")
                     continue
-
-                # sheet_name = agent_name..replace(" ", "").lower()
+                
+                agent_name = agent.name.replace(" ", "").lower()
+                logging.info(f"Processing agent: {agent.name}")
+                
+                # Query student data
                 students = db.query(
-                    models.Application.student_name,
-                    models.Application.Country,
-                    models.Application.university_name,
-                    models.Application.intake,
-                    models.Application.program_level,
-                    models.Application.program,
-                    models.Application.status,
-                    models.Application.yearly_fee,
-                    models.Application.scholarship,
-                    models.User.agent
-                    
-                ).filter(models.Application.id == id,models.Application.student_id==models.User.id).first()
-                app_list.append(students)
-                # print(app_list)
-
-                # logging.info(f"Number of students found for agent {sheet_name}: {len(students)}")
-
-                # if students:
-                #     flat_data = [student._asdict() for student in students]
-                #     df = pd.DataFrame(flat_data)
-                #     df.index += 1
-                #     df.to_excel(writer, index_label="Sr no.")
-
-            print(app_list)
-            if students:
-                    flat_data = [student._asdict() for student in app_list]
-                    df = pd.DataFrame(flat_data)
-                    df.index += 1
-                    df.to_excel(writer, index_label="Sr no.")
-            writer.close()
-
-            output.seek(0)
-            return StreamingResponse(
-                output,
-                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                headers={"Content-Disposition": "attachment; filename=Madhavoverseas_Data.xlsx"}
-            )
-        else:
-            logging.error("No agent IDs provided.")
-            raise HTTPException(status_code=400, detail="No agent IDs provided.")
+                    models.User.name.label("Name"),
+                    models.User.email.label("Email"),
+                    models.User.phone.label("Phone"),
+                    models.User.agent.label("Agent"),
+                    models.User.address.label("Address"),
+                    models.User.city.label("City"),
+                    models.User.state.label("State"),
+                    models.User.country.label("Country"),
+                    models.User.passport.label("Passport")
+                ).filter(models.User.agent.ilike(f'%{agent.name}%')).all()
+                
+                if not students:
+                    logging.info(f"No students found for agent {agent.name}.")
+                    continue
+                
+                # Convert query results to DataFrame
+                df = pd.DataFrame([s._asdict() for s in students])
+                df.index += 1
+                df.to_excel(writer, sheet_name=agent_name, index_label="Sr No.")
+        
+        if app_ids:
+            applications = db.query(
+                models.Application.student_name.label("Student Name"),
+                models.Application.Country.label("Country"),
+                models.Application.university_name.label("University Name"),
+                models.Application.intake.label("Intake"),
+                models.Application.program_level.label("Program Level"),
+                models.Application.program.label("Program"),
+                models.Application.status.label("Status"),
+                models.Application.yearly_fee.label("Yearly Fee"),
+                models.Application.scholarship.label("Scholarship"),
+                models.User.agent.label("Agent")
+            ).join(models.User, models.Application.student_id == models.User.id) \
+            .filter(models.Application.id.in_(app_ids)).all()
+            
+            if applications:
+                df = pd.DataFrame([a._asdict() for a in applications])
+                df.index += 1
+                df.to_excel(writer, sheet_name="Applications", index_label="Sr No.")
+            else:
+                logging.info("No applications found for the provided IDs.")
+        
+        writer.close()
+        output.seek(0)
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=Exported_Data.xlsx"}
+        )
     except Exception as e:
         logging.error(f"An error occurred: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
 
 # Visa Granted
 @app.get("/visa/")
@@ -1844,3 +1925,30 @@ async def get_expense(fil: schemas.getExpenses, db: Session = Depends(get_db)):
 
 
 
+@app.post("/upload/")
+async def upload_pdf(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=400, detail="File must be a PDF.")
+    
+    file_content = await file.read()
+    new_pdf = PDFFile(filename=file.filename, content=file_content)
+    
+    db.add(new_pdf)
+    db.commit()
+    db.refresh(new_pdf)
+    
+    return {"message": "PDF uploaded successfully", "file_id": new_pdf.id}
+
+# Endpoint to retrieve PDF
+@app.get("/download/{file_id}")
+def download_pdf(file_id: int, db: Session = Depends(get_db)):
+    pdf_file = db.query(PDFFile).filter(PDFFile.id == file_id).first()
+    if not pdf_file:
+        raise HTTPException(status_code=404, detail="PDF not found.")
+    
+    # Create a streaming response from in-memory content
+    return StreamingResponse(
+        BytesIO(pdf_file.content),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={pdf_file.filename}"}
+    )

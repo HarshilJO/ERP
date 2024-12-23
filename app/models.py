@@ -160,3 +160,9 @@ class CategorySub(Base):
     
     # Relationship to Category
     category = relationship("Category", back_populates="sub_categories")
+
+class upload(Base):
+    __tablename__ = "pdf_files"
+    id = Column(Integer, primary_key=True, index=True)
+    filename = Column(String, unique=True, index=True)
+    content = Column(LargeBinary)
