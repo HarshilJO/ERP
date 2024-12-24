@@ -8,7 +8,7 @@ from fastapi import File, Depends, status, Request, Query, Response
 from app import models, schemas
 from app.database import engine, SessionLocal
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, desc, distinct, func, or_
+from sqlalchemy import  desc,and_, distinct, func, or_
 import re
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
@@ -1261,25 +1261,25 @@ async def get_uni_drop(db: Session = Depends(get_db)):
 @app.post("/csv")
 async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_db)):
     try:
+        app_ids = json.loads(student.application_id)
         agent_ids = student.agent_id
-        app_ids = student.application_id
         output = BytesIO()
         logging.info(f"Agent IDs received: {agent_ids}")
-        
+
         # Create an Excel writer
         writer = pd.ExcelWriter(output, engine='openpyxl')
 
         if agent_ids:
             for agent_id in agent_ids:
                 agent = db.query(models.agent_data).filter(models.agent_data.id == agent_id).first()
-                
+
                 if not agent:
                     logging.warning(f"Agent ID {agent_id} not found.")
                     continue
-                
+
                 agent_name = agent.name.replace(" ", "").lower()
                 logging.info(f"Processing agent: {agent.name}")
-                
+
                 # Query student data
                 students = db.query(
                     models.User.name.label("Name"),
@@ -1292,16 +1292,16 @@ async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_
                     models.User.country.label("Country"),
                     models.User.passport.label("Passport")
                 ).filter(models.User.agent.ilike(f'%{agent.name}%')).all()
-                
+
                 if not students:
                     logging.info(f"No students found for agent {agent.name}.")
                     continue
-                
+
                 # Convert query results to DataFrame
                 df = pd.DataFrame([s._asdict() for s in students])
                 df.index += 1
                 df.to_excel(writer, sheet_name=agent_name, index_label="Sr No.")
-        
+
         if app_ids:
             applications = db.query(
                 models.Application.student_name.label("Student Name"),
@@ -1316,14 +1316,14 @@ async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_
                 models.User.agent.label("Agent")
             ).join(models.User, models.Application.student_id == models.User.id) \
             .filter(models.Application.id.in_(app_ids)).all()
-            
+
             if applications:
                 df = pd.DataFrame([a._asdict() for a in applications])
                 df.index += 1
                 df.to_excel(writer, sheet_name="Applications", index_label="Sr No.")
             else:
                 logging.info("No applications found for the provided IDs.")
-        
+
         writer.close()
         output.seek(0)
         return StreamingResponse(
@@ -1925,7 +1925,9 @@ async def get_expense(fil: schemas.getExpenses, db: Session = Depends(get_db)):
                 
     else:
         #db_expenses = db.query(models.Expense).order_by(desc(models.Expense.date)).all()
-        db_expenses = db.query(models.Expense).all()
+        db_expenses = db.query(models.Expense).order_by(desc(models.Expense.date)).all()
+        # db_expenses = db.query(models.Expense).order_by(desc(models.Expense.id))
+        print(str(db_expenses))
         return {"status": 200, "data": {'total':netTotal,'income':income_,'expense':expense_,'content':db_expenses}, "message": "success"}
 
 
@@ -1938,49 +1940,134 @@ def get_db():
         yield db
     finally:
         db.close()
+#
+# @app.post("/upload-files/")
+# async def upload_files(
+#     files: List[UploadFile],
+#     agency_name: str = Form(...),
+#     user_id: int = Form(...),
+#     db: Session = Depends(get_db)
+# ):
+#
+#
+#     agency_dir = BASE_DIR / agency_name.replace(" ", "_")
+#     agency_dir.mkdir(parents=True, exist_ok=True)
+#
+#     file_records = []
+#
+#     for file in files:
+#         # Save only the file name
+#         new_filename = f"{uuid.uuid4().hex}{Path(file.filename).suffix}"
+#         file_path = agency_dir / new_filename
+#
+#         with file_path.open("wb") as buffer:
+#             shutil.copyfileobj(file.file, buffer)
+#
+#         # Save file record to the database
+#         file_record = models.models.UploadedFile(
+#             user_id=user_id,
+#             agency_name=agency_name,
+#             file_name=new_filename,
+#             file_path=str(file_path)
+#         )
+#         db.add(file_record)
+#         file_records.append(file_record)
+#
+#     db.commit()
+#
+#     return {"message": "Files uploaded successfully", "files": [record.file_name for record in file_records]}
+#
+# @app.get("/get-files/{user_id}")
+# def get_files(user_id: int, db: Session = Depends(get_db)):
+#
+#     files = db.query(models.models.UploadedFile).filter(models.models.UploadedFile.user_id == user_id).all()
+#
+#     if not files:
+#         raise HTTPException(status_code=404, detail="No files found for the given user ID.")
+#
+#     return {"files": [{"file_name": file.file_name, "file_path": file.file_path} for file in files]}
 
-@app.post("/upload-files/")
-async def upload_files(
-    files: List[UploadFile],
+# import uuid
+# import shutil
+# from pathlib import Path
+# from typing import List
+# from fastapi import FastAPI, UploadFile, Form, HTTPException, Depends
+# from sqlalchemy.orm import Session
+# Assuming you have a database setup file
+
+
+
+BASE_DIR = Path("uploads")
+
+@app.post("/upload-file/{file_type}")
+async def upload_file(
+    file: UploadFile,
+    file_type: str,
     agency_name: str = Form(...),
     user_id: int = Form(...),
+    mail: str = Form(...),
+    phone: str = Form(...),
+    city: str = Form(...),
+    address: str = Form(...),
+    pincode: str = Form(...),
     db: Session = Depends(get_db)
 ):
+    # Validate file type
+    valid_file_types = [
+        "Company Pan Card", "Gst Certificate", "Incorporation Certificate",
+        "MSME", "Trade License", "Aadhar Card", "Pan Card", "Passport"
+    ]
 
+    if file_type not in valid_file_types:
+        raise HTTPException(status_code=400, detail="Invalid file type.")
 
+    # Create directories
     agency_dir = BASE_DIR / agency_name.replace(" ", "_")
     agency_dir.mkdir(parents=True, exist_ok=True)
 
-    file_records = []
+    category = "company" if file_type in valid_file_types[:5] else "personal"
+    category_dir = agency_dir / category
+    category_dir.mkdir(parents=True, exist_ok=True)
 
-    for file in files:
-        # Save only the file name
-        new_filename = f"{uuid.uuid4().hex}{Path(file.filename).suffix}"
-        file_path = agency_dir / new_filename
+    # Save file with specific name
+    sanitized_file_type = file_type.replace(" ", "_").lower()
+    new_filename = f"{sanitized_file_type}{Path(file.filename).suffix}"
+    file_path = category_dir / new_filename
 
-        with file_path.open("wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+    with file_path.open("wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
 
-        # Save file record to the database
-        file_record = models.UploadedFile(
-            user_id=user_id,
-            agency_name=agency_name,
-            file_name=new_filename,
-            file_path=str(file_path)
-        )
-        db.add(file_record)
-        file_records.append(file_record)
-
+    # Save file record to database
+    file_record = models.UploadedFile(
+        user_id=user_id,
+        agency_name=agency_name,
+        mail=mail,
+        phone=phone,
+        city=city,
+        address=address,
+        pincode=pincode,
+        file_name=new_filename,
+        file_path=str(file_path)
+    )
+    db.add(file_record)
     db.commit()
 
-    return {"message": "Files uploaded successfully", "files": [record.file_name for record in file_records]}
+    return {"message": f"{file_type} uploaded successfully", "file_name": new_filename}
 
 @app.get("/get-files/{user_id}")
 def get_files(user_id: int, db: Session = Depends(get_db)):
-
     files = db.query(models.UploadedFile).filter(models.UploadedFile.user_id == user_id).all()
 
     if not files:
         raise HTTPException(status_code=404, detail="No files found for the given user ID.")
 
-    return {"files": [{"file_name": file.file_name, "file_path": file.file_path} for file in files]}
+    return {
+        "files": [
+            {
+                "file_name": file.file_name,
+                "file_path": file.file_path,
+                "category": "company" if "company" in file.file_path else "personal"
+            }
+            for file in files
+        ]
+    }
