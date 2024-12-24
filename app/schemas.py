@@ -116,7 +116,7 @@ class csv(BaseModel):
 class AgentWiseStudent(BaseModel):
     agent_id:Optional[List[int]] = None
     name:Optional[str]=Field(None)
-    application_id:str
+    application_id:Optional[str] = Field(None)
 
 
 class commission_get(BaseModel):

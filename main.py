@@ -3,12 +3,16 @@ from fastapi.responses import FileResponse
 from pathlib import Path
 from typing import List
 import shutil
-import uuid
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
+import traceback
+
 from fastapi import File, Depends, status, Request, Query, Response
 from app import models, schemas
 from app.database import engine, SessionLocal
 from sqlalchemy.orm import Session
-from sqlalchemy import  desc,and_, distinct, func, or_
+from sqlalchemy import  desc , and_, distinct, func, or_, cast, Date
 import re
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
@@ -446,45 +450,58 @@ async def read_users(student: schemas.AgentWiseStudent, db: Session = Depends(ge
     final_result_with_search = []
     name = student.name
 
-    agent_ids = student.agent_id
-    if student.agent_id:
-        for id in agent_ids:
-            agent_name = db.query(models.agent_data).filter(models.agent_data.id == id).all()
-            agentWiseStudent.append(agent_name[0].name.replace(" ", "").lower())
-            # print(agentWiseStudent)
-
-        # getting students with that agent
-        for agent_name in agentWiseStudent:
-            students = db.query(models.User).all()
-            matched_students = [student for student in students if student.agent.replace(" ", "").lower() == agent_name]
-            response.append(matched_students)
-
-        if student.agent_id and name:
-            user_data = db.query(models.User).filter(models.User.name.ilike(f"%{name}%")).all()
-
+    try:
+        agent_ids = student.agent_id
+        if student.agent_id:
+            for id in agent_ids:
+                agent_name = db.query(models.agent_data).filter(models.agent_data.id == id).all()
+                if agent_name:
+                    agentWiseStudent.append(agent_name[0].name.replace(" ", "").lower())
+                else:
+                    raise ValueError(f"Agent ID {id} not found in database.")
+            
+            # Getting students with the matching agent names
             for agent_name in agentWiseStudent:
-                for student in user_data:
-                    if student.agent.replace(" ", "").lower() == agent_name:
-                        # print(agent_name)
-                        final_result_with_search.append(student)
+                students = db.query(models.User).all()
+                matched_students = [student for student in students if student.agent.replace(" ", "").lower() == agent_name]
+                response.append(matched_students)
 
-            return {'status': 200, 'data': final_result_with_search, 'message': 'Success'}
+            if student.agent_id and name:
+                user_data = db.query(models.User).filter(models.User.name.ilike(f"%{name}%")).all()
 
-        return {'status': 200, 'data': [item for row in response for item in row], 'message': 'Success'}
-    else:
-        student_info = []
+                for agent_name in agentWiseStudent:
+                    for student in user_data:
+                        if student.agent.replace(" ", "").lower() == agent_name:
+                            final_result_with_search.append(student)
 
-        if name:
-            user_data = db.query(models.User).filter(models.User.name.ilike(f"%{name}%")).all()
-            if not user_data:
-                return {'status': 200, 'data': [], 'message': 'Success'}
-            else:
-                return {'status': 200, 'data': user_data, 'message': 'Success'}
+                return {'status': 200, 'data': final_result_with_search, 'message': 'Success'}
 
+            return {'status': 200, 'data': [item for row in response for item in row], 'message': 'Success'}
         else:
-            user_data = db.query(models.User).all()
-            student_info.extend(user_data)
-            return {'status': 200, 'data': student_info, 'message': 'Success'}
+            student_info = []
+
+            if name:
+                user_data = db.query(models.User).filter(models.User.name.ilike(f"%{name}%")).all()
+                if not user_data:
+                    return {'status': 200, 'data': [], 'message': 'Success'}
+                else:
+                    return {'status': 200, 'data': user_data, 'message': 'Success'}
+            else:
+                user_data = db.query(models.User).all()
+                student_info.extend(user_data)
+                return {'status': 200, 'data': student_info, 'message': 'Success'}
+
+    except SQLAlchemyError as e:
+        # Handle SQLAlchemy-specific exceptions
+        print("SQLAlchemy error occurred:", str(e))
+        traceback.print_exc()
+        return {'status': 500, 'data': [], 'message': 'Database error occurred'}
+
+    except Exception as ex:
+        # Handle any other unforeseen exceptions
+        print("Unexpected error occurred:", str(ex))
+        traceback.print_exc()
+        return {'status': 500, 'data': [], 'message': 'An unexpected error occurred'}
 @app.get("/user_name")
 async def user_name(db: Session = Depends(get_db)):
     agent_names = db.query(models.User.id, models.User.name).all()
@@ -1924,13 +1941,10 @@ async def get_expense(fil: schemas.getExpenses, db: Session = Depends(get_db)):
             return {'status':200,'data':{'total':0.0,'income':0.0,'expense':0.0,'content':[]},'message':'success'}
                 
     else:
-        #db_expenses = db.query(models.Expense).order_by(desc(models.Expense.date)).all()
-        db_expenses = db.query(models.Expense).order_by(desc(models.Expense.date)).all()
-        # db_expenses = db.query(models.Expense).order_by(desc(models.Expense.id))
-        print(str(db_expenses))
-        return {"status": 200, "data": {'total':netTotal,'income':income_,'expense':expense_,'content':db_expenses}, "message": "success"}
-
-
+        from sqlalchemy import desc
+        db_expenses = (db.query(models.Expense).order_by(desc(models.Expense.date)).all())
+        
+        return {"status": 200, "data": {'total':netTotal,'income':income_,'expense':expense_,'content':db_expenses}, "message": "success_else"}
 BASE_DIR = Path("uploaded_files")
 BASE_DIR.mkdir(exist_ok=True)
 
