@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey,JSON,Boolean,VARCHAR
+from sqlalchemy import Column, Integer, String, ForeignKey,JSON,Boolean,VARCHAR,LargeBinary
 from app.database import Base
 
 from sqlalchemy.orm import relationship
@@ -161,8 +161,16 @@ class CategorySub(Base):
     # Relationship to Category
     category = relationship("Category", back_populates="sub_categories")
 
-class upload(Base):
-    __tablename__ = "pdf_files"
-    id = Column(Integer, primary_key=True, index=True)
-    filename = Column(String, unique=True, index=True)
-    content = Column(LargeBinary)
+class UploadedFile(Base):
+    __tablename__ = "uploaded_files"
+
+    id = Column(Integer, primary_key=True, index=True,autoincrement=True)
+    user_id = Column(Integer, index=True)
+    agency_name = Column(String, index=True)
+    mail=Column(String,index=True)
+    phone=Column(String,index=True)
+    city=Column(String,index=True)
+    address=Column(String,index=True)
+    pincode=Column(String,index=True)
+    file_name = Column(String, index=True)
+    file_path = Column(String, index=True)

@@ -1,19 +1,23 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request, Query,Response
+from fastapi import FastAPI, UploadFile, Form, HTTPException
+from fastapi.responses import FileResponse
+from pathlib import Path
+from typing import List
+import shutil
+import uuid
+from fastapi import File, Depends, status, Request, Query, Response
 from app import models, schemas
 from app.database import engine, SessionLocal
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc, distinct, func, or_
 import re
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Optional
 import json
 import jwt
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
 import logging
 import openpyxl
-# import xlswriter
 from datetime import datetime, timedelta
 import pandas as pd
 import requests
@@ -1726,6 +1730,7 @@ async def getCategory(id: Optional[int] = Query(None), db: Session = Depends(get
     db_sub = db.query(models.CategorySub).filter(models.CategorySub.category_id == id).all()
     return {'status':200,'data':{'category':db_category,'sub_category':db_sub},'message':'success'}
 
+
 @app.post("/get_expense")
 async def get_expense(fil: schemas.getExpenses, db: Session = Depends(get_db)):
 
@@ -1919,36 +1924,63 @@ async def get_expense(fil: schemas.getExpenses, db: Session = Depends(get_db)):
             return {'status':200,'data':{'total':0.0,'income':0.0,'expense':0.0,'content':[]},'message':'success'}
                 
     else:
-    
+        #db_expenses = db.query(models.Expense).order_by(desc(models.Expense.date)).all()
         db_expenses = db.query(models.Expense).all()
         return {"status": 200, "data": {'total':netTotal,'income':income_,'expense':expense_,'content':db_expenses}, "message": "success"}
 
 
+BASE_DIR = Path("uploaded_files")
+BASE_DIR.mkdir(exist_ok=True)
 
-@app.post("/upload/")
-async def upload_pdf(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    if file.content_type != "application/pdf":
-        raise HTTPException(status_code=400, detail="File must be a PDF.")
-    
-    file_content = await file.read()
-    new_pdf = PDFFile(filename=file.filename, content=file_content)
-    
-    db.add(new_pdf)
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+@app.post("/upload-files/")
+async def upload_files(
+    files: List[UploadFile],
+    agency_name: str = Form(...),
+    user_id: int = Form(...),
+    db: Session = Depends(get_db)
+):
+
+
+    agency_dir = BASE_DIR / agency_name.replace(" ", "_")
+    agency_dir.mkdir(parents=True, exist_ok=True)
+
+    file_records = []
+
+    for file in files:
+        # Save only the file name
+        new_filename = f"{uuid.uuid4().hex}{Path(file.filename).suffix}"
+        file_path = agency_dir / new_filename
+
+        with file_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # Save file record to the database
+        file_record = models.UploadedFile(
+            user_id=user_id,
+            agency_name=agency_name,
+            file_name=new_filename,
+            file_path=str(file_path)
+        )
+        db.add(file_record)
+        file_records.append(file_record)
+
     db.commit()
-    db.refresh(new_pdf)
-    
-    return {"message": "PDF uploaded successfully", "file_id": new_pdf.id}
 
-# Endpoint to retrieve PDF
-@app.get("/download/{file_id}")
-def download_pdf(file_id: int, db: Session = Depends(get_db)):
-    pdf_file = db.query(PDFFile).filter(PDFFile.id == file_id).first()
-    if not pdf_file:
-        raise HTTPException(status_code=404, detail="PDF not found.")
-    
-    # Create a streaming response from in-memory content
-    return StreamingResponse(
-        BytesIO(pdf_file.content),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename={pdf_file.filename}"}
-    )
+    return {"message": "Files uploaded successfully", "files": [record.file_name for record in file_records]}
+
+@app.get("/get-files/{user_id}")
+def get_files(user_id: int, db: Session = Depends(get_db)):
+
+    files = db.query(models.UploadedFile).filter(models.UploadedFile.user_id == user_id).all()
+
+    if not files:
+        raise HTTPException(status_code=404, detail="No files found for the given user ID.")
+
+    return {"files": [{"file_name": file.file_name, "file_path": file.file_path} for file in files]}
