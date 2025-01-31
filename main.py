@@ -2025,12 +2025,17 @@ def get_db():
 
 
 
-BASE_DIR = Path("uploads")
+BASE_DIR = Path("uploaded_files")
+BASE_DIR.mkdir(exist_ok=True)
+SUPPORTED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
 
-@app.post("/upload-file/{file_type}")
-async def upload_file(
-    file: UploadFile,
-    file_type: str,
+@app.post("/upload-files")
+async def upload_files(
+    cancel_check: UploadFile,
+    pan_card: UploadFile,
+    company_registration: UploadFile,
+    aadhar_card: UploadFile,
+    gst_certificate: UploadFile,
     agency_name: str = Form(...),
     user_id: int = Form(...),
     mail: str = Form(...),
@@ -2040,33 +2045,39 @@ async def upload_file(
     pincode: str = Form(...),
     db: Session = Depends(get_db)
 ):
-    # Validate file type
-    valid_file_types = [
-        "Company Pan Card", "Gst Certificate", "Incorporation Certificate",
-        "MSME", "Trade License", "Aadhar Card", "Pan Card", "Passport"
-    ]
-
-    if file_type not in valid_file_types:
-        raise HTTPException(status_code=400, detail="Invalid file type.")
-
-    # Create directories
     agency_dir = BASE_DIR / agency_name.replace(" ", "_")
     agency_dir.mkdir(parents=True, exist_ok=True)
 
-    category = "company" if file_type in valid_file_types[:5] else "personal"
-    category_dir = agency_dir / category
-    category_dir.mkdir(parents=True, exist_ok=True)
+    uploaded_files = {
+        "cancel_check": cancel_check,
+        "pan_card": pan_card,
+        "company_registration": company_registration,
+        "aadhar_card": aadhar_card,
+        "gst_certificate": gst_certificate
+    }
 
-    # Save file with specific name
-    sanitized_file_type = file_type.replace(" ", "_").lower()
-    new_filename = f"{sanitized_file_type}{Path(file.filename).suffix}"
-    file_path = category_dir / new_filename
+    file_paths = {}
 
-    with file_path.open("wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    for file_type, file in uploaded_files.items():
+        # Validate file extension
+        file_extension = Path(file.filename).suffix.lower()
+        if file_extension not in SUPPORTED_EXTENSIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type for {file_type.replace('_', ' ').title()}. Allowed types: PDF, JPG, JPEG, PNG."
+            )
 
-    # Save file record to database
-    file_record = models.UploadedFile(
+        # Save file with specific name
+        new_filename = f"{file_type}{file_extension}"
+        file_path = agency_dir / new_filename
+
+        with file_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        file_paths[file_type] = str(file_path)
+
+    # Save file records in a single database entry
+    file_record = models.AgencyFiles(
         user_id=user_id,
         agency_name=agency_name,
         mail=mail,
@@ -2074,28 +2085,30 @@ async def upload_file(
         city=city,
         address=address,
         pincode=pincode,
-        file_name=new_filename,
-        file_path=str(file_path)
+        cancel_check_path=file_paths["cancel_check"],
+        pan_card_path=file_paths["pan_card"],
+        company_registration_path=file_paths["company_registration"],
+        aadhar_card_path=file_paths["aadhar_card"],
+        gst_certificate_path=file_paths["gst_certificate"]
     )
     db.add(file_record)
     db.commit()
 
-    return {"message": f"{file_type} uploaded successfully", "file_name": new_filename}
+    return {"message": "Files uploaded successfully", "file_paths": file_paths}
 
 @app.get("/get-files/{user_id}")
 def get_files(user_id: int, db: Session = Depends(get_db)):
-    files = db.query(models.UploadedFile).filter(models.UploadedFile.user_id == user_id).all()
+    file_record = db.query(models.AgencyFiles).filter(models.AgencyFiles.user_id == user_id).first()
 
-    if not files:
+    if not file_record:
         raise HTTPException(status_code=404, detail="No files found for the given user ID.")
 
     return {
-        "files": [
-            {
-                "file_name": file.file_name,
-                "file_path": file.file_path,
-                "category": "company" if "company" in file.file_path else "personal"
-            }
-            for file in files
-        ]
+        "files": {
+            "Cancel Check": file_record.cancel_check_path,
+            "Pan Card": file_record.pan_card_path,
+            "Company Registration": file_record.company_registration_path,
+            "Aadhar Card": file_record.aadhar_card_path,
+            "GST Certificate": file_record.gst_certificate_path
+        }
     }
