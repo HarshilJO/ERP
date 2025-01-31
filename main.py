@@ -390,22 +390,22 @@ async def Dashboard(db: Session = Depends(get_db)):
         logger.error(f"Error processing timestamps: {e}")
         return {'status': 500, 'message': 'Error processing timestamps'}
 
-    month_names = {
-        1: 'January', 2: 'February', 3: 'March', 4: 'April', 5: 'May', 6: 'June',
-        7: 'July', 8: 'August', 9: 'September', 10: 'October', 11: 'November', 12: 'December'
-    }
-    month_counts.index = month_counts.index.map(month_names)
-    radialBar = [{"label": month, "series": count} for month, count in month_counts.items()]
-    logger.info(f"RadialBar data prepared: {radialBar}")
+    # month_names = {
+    #     1: 'January', 2: 'February', 3: 'March', 4: 'April', 5: 'May', 6: 'June',
+    #     7: 'July', 8: 'August', 9: 'September', 10: 'October', 11: 'November', 12: 'December'
+    # }
+    # month_counts.index = month_counts.index.map(month_names)
+    # radialBar = [{"label": month, "series": count} for month, count in month_counts.items()]
+    # logger.info(f"RadialBar data prepared: {radialBar}")
 
     # Fetch agent data and prepare donut chart
-    try:
-        result = db.query(models.User.agent, func.count(models.User.id)).group_by(models.User.agent).all()
-        donut = [{"label": agent, "series": count} for agent, count in result]
-        logger.info(f"Donut chart data prepared: {donut}")
-    except Exception as e:
-        logger.error(f"Error fetching donut data: {e}")
-        return {'status': 500, 'message': 'Error fetching donut data'}
+    # try:
+    #     result = db.query(models.User.agent, func.count(models.User.id)).group_by(models.User.agent).all()
+    #     donut = [{"label": agent, "series": count} for agent, count in result]
+    #     logger.info(f"Donut chart data prepared: {donut}")
+    # except Exception as e:
+    #     logger.error(f"Error fetching donut data: {e}")
+    #     return {'status': 500, 'message': 'Error fetching donut data'}
 
     # Fetch additional counts
     try:
@@ -413,8 +413,8 @@ async def Dashboard(db: Session = Depends(get_db)):
         count_student = db.query(models.User).count()
         count_application = db.query(models.Application).count()
         count_agent = db.query(models.agent_data).count()
-        count_pending_application = db.query(models.Application).filter(models.Application.status != "Application Completed").count()
-        count_done_application = db.query(models.Application).filter(models.Application.status == "Application Completed").count()
+        # count_pending_application = db.query(models.Application).filter(models.Application.status != "Application Completed").count()
+        count_done_application = db.query(models.Application).filter(models.Application.status == "Full Offer").count()
         total_visa_granted = db.query(models.Application).filter(models.Application.status == "Visa Granted").count()
         
         logger.info("Fetched all required counts.")
@@ -426,10 +426,8 @@ async def Dashboard(db: Session = Depends(get_db)):
         "student_count": count_student,
         "Application_count": count_application,
         "Agent_count": count_agent,
-        "Application_Completed": count_done_application,
-        "Application_Incomplete": count_pending_application,
-        "RadialBar": radialBar,
-        "donut": donut,
+        "Full_Offer": count_done_application,
+        # "Application_Incomplete": count_pending_application,
         "data": Student_data,
         "visa": total_visa_granted
     }
@@ -832,7 +830,23 @@ async def get_all_applications(query: schemas.ApplicationQuery, db: Session = De
  
         # Apply filters to the query
         query_result = db.query(models.Application).filter(*filters).all()
- 
+        agent_list = []
+                
+        # agent column 
+        
+        for row in query_result:
+            query = db.query(models.User.agent).filter(models.User.id == row.student_id).first()
+            agent_list.append(query)
+        plain_list = [item[0] for item in agent_list]
+        print(plain_list)
+        # names = ['abc', 'xyz']
+        # data = [{'key1': 'value1'}, {'key2': 'value2'}]
+
+        # Combine the lists by adding the name to each dictionary
+        # combined = [{**d, 'agent_name': n} for n, d in zip(plain_list, query_result)]
+        for agent_name, obj in zip(plain_list, query_result):
+            obj.agent = agent_name 
+
         if query_result:
             return {'status': 200, 'data': query_result, 'message': 'Applications fetched successfully'}
         else:
