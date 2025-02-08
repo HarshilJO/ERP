@@ -90,23 +90,24 @@ statuses = [
     {"id": 2, "label": "Application Completed"},
     {"id": 3, "label": "Application Uploaded on CRM"},
     {"id": 4, "label": "Conditional Offer Letter"},
-    {"id": 5, "label": "On Hold"},
-    {"id": 6, "label": "Finance Approved"},
-    {"id": 7, "label": "GTE Submitted"},
-    {"id": 8, "label": "GTE Approved"},
-    {"id": 9, "label": "Full Offer"},
-    {"id": 10, "label": "Fees Paid"},
-    {"id": 11, "label": "COE Issued"},
-    {"id": 12, "label": "Visa Lodged"},
-    {"id": 13, "label": "Visa Granted"},
-    {"id": 14, "label": "Application Withdrawn"},
-    {"id": 15, "label": "Rejected by University"},
-    {"id": 16, "label": "Visa Refusal"},
-    {"id": 17, "label": "Visa Withdrawn"},
-    {"id": 18, "label": "Visa Unidentified"},
-    {"id": 19, "label": "Refund Applied"},
-    {"id": 20, "label": "Refund Processed"},
-    {"id": 21, "label": "Pending document"}
+    {"id": 5, "label": "UnConditional Offer Letter"},
+    {"id": 6, "label": "On Hold"},
+    {"id": 7, "label": "Finance Approved"},
+    {"id": 8, "label": "GTE Submitted"},
+    {"id": 9, "label": "GTE Approved"},
+    {"id": 10, "label": "Full Offer"},
+    {"id": 11, "label": "Fees Paid"},
+    {"id": 12, "label": "COE Issued"},
+    {"id": 13, "label": "Visa Lodged"},
+    {"id": 14, "label": "Visa Granted"},
+    {"id": 15, "label": "Application Withdrawn"},
+    {"id": 16, "label": "Rejected by University"},
+    {"id": 17, "label": "Visa Refusal"},
+    {"id": 18, "label": "Visa Withdrawn"},
+    {"id": 19, "label": "Visa Unidentified"},
+    {"id": 20, "label": "Refund Applied"},
+    {"id": 21, "label": "Refund Processed"},
+    {"id": 22, "label": "Pending document"}
 ]
 
 
@@ -415,6 +416,9 @@ async def Dashboard(db: Session = Depends(get_db)):
         count_agent = db.query(models.agent_data).count()
         # count_pending_application = db.query(models.Application).filter(models.Application.status != "Application Completed").count()
         count_done_application = db.query(models.Application).filter(models.Application.status == "Full Offer").count()
+        count_done_application_grant = db.query(models.Application).filter(models.Application.status == "Visa Granted").count()
+        count_done_application_unconditional = db.query(models.Application).filter(models.Application.status == "UnConditional Offer Letter").count()
+        count_done_application = count_done_application + count_done_application_grant + count_done_application_unconditional
         total_visa_granted = db.query(models.Application).filter(models.Application.status == "Visa Granted").count()
         
         logger.info("Fetched all required counts.")
@@ -839,11 +843,7 @@ async def get_all_applications(query: schemas.ApplicationQuery, db: Session = De
             agent_list.append(query)
         plain_list = [item[0] for item in agent_list]
         print(plain_list)
-        # names = ['abc', 'xyz']
-        # data = [{'key1': 'value1'}, {'key2': 'value2'}]
-
-        # Combine the lists by adding the name to each dictionary
-        # combined = [{**d, 'agent_name': n} for n, d in zip(plain_list, query_result)]
+     
         for agent_name, obj in zip(plain_list, query_result):
             obj.agent = agent_name 
 
@@ -1292,8 +1292,10 @@ async def get_uni_drop(db: Session = Depends(get_db)):
 @app.post("/csv")
 async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_db)):
     try:
-        app_ids = json.loads(student.application_id)
-        agent_ids = student.agent_id
+        # Ensure application_id is not None before parsing
+        app_ids = json.loads(student.application_id) if student.application_id else []
+        agent_ids = student.agent_id or []  # Ensure agent_ids is a list even if None
+        
         output = BytesIO()
         logging.info(f"Agent IDs received: {agent_ids}")
 
@@ -1303,7 +1305,6 @@ async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_
         if agent_ids:
             for agent_id in agent_ids:
                 agent = db.query(models.agent_data).filter(models.agent_data.id == agent_id).first()
-
                 if not agent:
                     logging.warning(f"Agent ID {agent_id} not found.")
                     continue
@@ -1365,6 +1366,7 @@ async def get_data(student: schemas.AgentWiseStudent, db: Session = Depends(get_
     except Exception as e:
         logging.error(f"An error occurred: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
 
 
 # Visa Granted
