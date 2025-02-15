@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 import traceback
-
+from jose import jwt, JWTError
+from fastapi.security import OAuth2PasswordBearer
 from fastapi import File, Depends, status, Request, Query, Response
 from app import models, schemas
 from app.database import engine, SessionLocal
@@ -301,8 +302,11 @@ async def app_status_update(
         "data": "Application Status Updated",
         "message": "Application Status Updated",
     }
-
-
+    
+# Session handling
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+SECRET_KEY = "09d25e094faa****************f7099f6f0f4caa6cf63b88e8d3e7"
+ALGORITHM = "HS256"
 
 def create_access_token(data: dict):
     try:
@@ -312,7 +316,8 @@ def create_access_token(data: dict):
         # encryption algorithm
         ALGORITHM = "HS256"
         # expire time of the token - set to 100 years
-        expire = datetime.utcnow() + timedelta(days=365*100)
+        expire = datetime.utcnow() + timedelta(minutes=2)
+
         to_encode.update({"exp": expire})
         encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -321,6 +326,22 @@ def create_access_token(data: dict):
     except Exception as e:
         logger.error("Error creating access token: %s", e)
         raise HTTPException(status_code=500, detail="Internal Server Error")
+    
+
+def verify_access_token(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        exp = payload.get("exp")
+        if exp is None:
+            raise HTTPException(status_code=401, detail="Token has no expiration time")
+        
+        if datetime.utcnow() > datetime.utcfromtimestamp(exp):
+            raise HTTPException(status_code=401, detail="Token has expired")
+        
+        return payload
+
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 # Login route
 @app.post("/login")
@@ -349,14 +370,14 @@ def login(user: schemas.Credentials, db: Session = Depends(get_db)):
                 data = {'message': "Incorrect username or password",
                         'data': "Incorrect username or password"}
                 return JSONResponse(
-                    status_code=404,
+                    status_code=401,
                     content=data
                 )
         else:
             data = {'message': "Incorrect username or password",
                     'data': "Incorrect username or password"}
             return JSONResponse(
-                status_code=404,
+                status_code=401,
                 content=data
             )
     except Exception as e:
@@ -368,10 +389,18 @@ def login(user: schemas.Credentials, db: Session = Depends(get_db)):
 
 # <----Dashboard----->
 @app.get("/Dashboard/")
-async def Dashboard(db: Session = Depends(get_db)):
+async def Dashboard(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     logger.info("Dashboard endpoint called.")
     
-    # Fetch timestamps from the Application model
+    # Verify the JWT token
+    payload = verify_access_token(token)
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired or is invalid",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     try:
         timestamps = db.query(models.Application.timestamp).all()
         timestamps = [t[0] for t in timestamps]
@@ -380,7 +409,6 @@ async def Dashboard(db: Session = Depends(get_db)):
         logger.error(f"Error fetching timestamps: {e}")
         return {'status': 500, 'message': 'Error fetching timestamps'}
 
-    # Process timestamps to extract month info
     try:
         df = pd.DataFrame(timestamps, columns=['timestamp'])
         df['timestamp'] = pd.to_datetime(df['timestamp'])
@@ -389,32 +417,13 @@ async def Dashboard(db: Session = Depends(get_db)):
         logger.info("Processed timestamps into month_counts.")
     except Exception as e:
         logger.error(f"Error processing timestamps: {e}")
-        return {'status': 500, 'message': 'Error processing timestamps'}
+        return {'status': 500 , 'message': 'Error processing timestamps'}
 
-    # month_names = {
-    #     1: 'January', 2: 'February', 3: 'March', 4: 'April', 5: 'May', 6: 'June',
-    #     7: 'July', 8: 'August', 9: 'September', 10: 'October', 11: 'November', 12: 'December'
-    # }
-    # month_counts.index = month_counts.index.map(month_names)
-    # radialBar = [{"label": month, "series": count} for month, count in month_counts.items()]
-    # logger.info(f"RadialBar data prepared: {radialBar}")
-
-    # Fetch agent data and prepare donut chart
-    # try:
-    #     result = db.query(models.User.agent, func.count(models.User.id)).group_by(models.User.agent).all()
-    #     donut = [{"label": agent, "series": count} for agent, count in result]
-    #     logger.info(f"Donut chart data prepared: {donut}")
-    # except Exception as e:
-    #     logger.error(f"Error fetching donut data: {e}")
-    #     return {'status': 500, 'message': 'Error fetching donut data'}
-
-    # Fetch additional counts
     try:
         Student_data = db.query(models.User).order_by(desc(models.User.id)).limit(6).all()
         count_student = db.query(models.User).count()
         count_application = db.query(models.Application).count()
         count_agent = db.query(models.agent_data).count()
-        # count_pending_application = db.query(models.Application).filter(models.Application.status != "Application Completed").count()
         count_done_application = db.query(models.Application).filter(models.Application.status == "Full Offer").count()
         count_done_application_grant = db.query(models.Application).filter(models.Application.status == "Visa Granted").count()
         count_done_application_unconditional = db.query(models.Application).filter(models.Application.status == "UnConditional Offer Letter").count()
@@ -431,7 +440,6 @@ async def Dashboard(db: Session = Depends(get_db)):
         "Application_count": count_application,
         "Agent_count": count_agent,
         "Full_Offer": count_done_application,
-        # "Application_Incomplete": count_pending_application,
         "data": Student_data,
         "visa": total_visa_granted
     }
